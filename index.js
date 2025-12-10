@@ -15,14 +15,14 @@ let currentWaveform = new Array(WAVE_SIZE).fill(0).map((_, i) =>
 
 let currentADSR = { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1.5 };
 
-// ★修正: Droneの初期音量を -15 から -5 にアップ
-let currentMixer = { synth: -6, drone: -5 };
+// ★修正: Synthの音量を少し上げ、Droneもしっかり出す
+let currentMixer = { synth: -4, drone: -6 };
 
-// EQ設定
+// ★修正: 初期EQで「低音強め・高音控えめ」にしてバランスを整える
 let currentEQ = {
-    low:  { freq: 100,  gain: 0 },
-    mid:  { freq: 1000, gain: 0 },
-    high: { freq: 5000, gain: 0 }
+    low:  { freq: 100,  gain: 4 },   // 低音をブースト
+    mid:  { freq: 1000, gain: -2 },  // 中域を少しスッキリさせる
+    high: { freq: 5000, gain: -6 }   // 耳に痛い高音を抑える
 };
 
 let currentScaleName = "MYSTERIOUS";
