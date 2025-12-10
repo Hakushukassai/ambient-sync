@@ -20,7 +20,8 @@
         .panel-section {
             display: flex; flex-direction: column; align-items: center;
             background: rgba(10, 10, 10, 0.85); border: 1px solid #333; border-radius: 6px;
-            padding: 15px; backdrop-filter: blur(10px); width: 260px; height: 200px; 
+            padding: 10px; /* パディングを少し減らしてスペース確保 */
+            backdrop-filter: blur(10px); width: 260px; height: 210px; /* 高さを少し確保 */
             justify-content: flex-start; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
             flex-shrink: 0; position: relative; transition: transform 0.2s, box-shadow 0.2s;
         }
@@ -30,12 +31,11 @@
             background: linear-gradient(90deg, transparent, #00ffcc, transparent); opacity: 0.6;
         }
         
-        .label { font-size: 11px; color: #00ffcc; margin-bottom: 10px; letter-spacing: 2px; text-shadow: 0 0 8px rgba(0,255,204,0.6); font-weight: bold; text-transform: uppercase; pointer-events: none; }
+        .label { font-size: 11px; color: #00ffcc; margin-bottom: 8px; letter-spacing: 2px; text-shadow: 0 0 8px rgba(0,255,204,0.6); font-weight: bold; text-transform: uppercase; pointer-events: none; }
 
-        /* パーツ */
         #wave-canvas, #eq-canvas, #adsr-canvas { background: rgba(0, 0, 0, 0.5); border: 1px solid #444; border-radius: 4px; box-shadow: inset 0 0 15px rgba(0,0,0,0.8); width: 240px; }
         
-        #wave-canvas { height: 90px; cursor: crosshair; touch-action: none; user-select: none; -webkit-user-select: none; }
+        #wave-canvas { height: 90px; cursor: crosshair; touch-action: none; user-select: none; }
         #eq-canvas { height: 100px; cursor: default; touch-action: none; }
         #adsr-canvas { height: 70px; }
 
@@ -45,7 +45,6 @@
         .sliders { display: flex; gap: 10px; width: 100%; justify-content: space-between; margin-top: 5px; }
         .slider-group { display: flex; flex-direction: column; align-items: center; position: relative; }
         
-        /* スライダー */
         input[type=range].vertical {
             -webkit-appearance: none; appearance: none; width: 30px; height: 100px;
             background: transparent; outline: none; writing-mode: bt-lr; -webkit-appearance: slider-vertical;
@@ -60,7 +59,6 @@
         }
         .param-label { font-size: 10px; color: #666; margin-top: 6px; font-weight: bold; letter-spacing: 1px; pointer-events: none; }
 
-        /* ボタン */
         .btn-group { display: flex; gap: 10px; margin-top: 10px; }
         button {
             background: rgba(0,0,0,0.6); border: 1px solid #333; border-bottom: 2px solid #333;
@@ -71,9 +69,30 @@
         button:hover { background: rgba(0, 255, 204, 0.1); border-color: #00ffcc; }
         button.active { background: #00ffcc; color: #000; border-color: #00ffcc; box-shadow: 0 0 15px rgba(0,255,204,0.6); text-shadow: none; font-weight: bold; }
 
-        /* スケールグリッド */
-        .scale-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; margin-top: 5px; height: 100%; overflow-y: auto; }
-        .scale-btn { padding: 8px 2px; font-size: 9px; text-align: left; padding-left: 8px; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; touch-action: pan-x; border: 1px solid #333; background: rgba(0,0,0,0.3); }
+        /* --- ★修正: スマホでも崩れないグリッド設定 --- */
+        .scale-grid { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; /* 常に2列にする */
+            gap: 4px; /* 隙間を詰める */
+            width: 100%; 
+            margin-top: 5px; 
+            height: 100%; 
+            overflow-y: auto; 
+            align-content: start;
+        }
+        .scale-btn { 
+            padding: 8px 4px; /* パディング調整 */
+            font-size: 9px; 
+            text-align: left; 
+            width: 100%; 
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            touch-action: pan-x; 
+            border: 1px solid #333; 
+            background: rgba(0,0,0,0.3); 
+            box-sizing: border-box; /* 枠線を含めたサイズ計算 */
+        }
         .scale-btn.active { border-color: #00ffcc; background: rgba(0,255,204,0.2); color: white; box-shadow: 0 0 8px rgba(0,255,204,0.3); }
 
         #overlay {
@@ -84,12 +103,11 @@
         }
         #overlay span { margin-top: 15px; font-size: 10px; color: #888; letter-spacing: 1px; }
 
-        @media (min-width: 1100px) { #controls { justify-content: center; gap: 20px; } .scale-grid { grid-template-columns: 1fr 1fr; } }
+        @media (min-width: 1100px) { #controls { justify-content: center; gap: 20px; } }
         @media (max-width: 1099px) { 
             #controls { justify-content: flex-start; overflow-x: auto; padding: 10px 20px 30px 20px; scroll-snap-type: x mandatory; } 
             #controls::-webkit-scrollbar { display: none; } 
             .panel-section { scroll-snap-align: center; margin-right: 5px; } 
-            .scale-grid { grid-template-columns: 1fr; }
         }
     </style>
     <script src="/socket.io/socket.io.js"></script>
@@ -125,7 +143,7 @@
             <div class="label">3. MIXER</div>
             <div class="mixer-container">
                 <div class="slider-group"><input type="range" class="vertical" id="vol-synth" min="-60" max="0" step="1" value="-6"><span class="param-label">SYNTH</span></div>
-                <div class="slider-group"><input type="range" class="vertical" id="vol-drone" min="-60" max="0" step="1" value="-10"><span class="param-label">DRONE</span></div>
+                <div class="slider-group"><input type="range" class="vertical" id="vol-drone" min="-60" max="0" step="1" value="-5"><span class="param-label">DRONE</span></div>
             </div>
         </div>
 
@@ -145,14 +163,14 @@
         <div class="panel-section">
             <div class="label">5. SCALE (MOOD)</div>
             <div class="scale-grid">
-                <button class="scale-btn active" data-scale="MINOR_PENTATONIC">MINOR PENTATONIC (MYSTERIOUS)</button>
+                <button class="scale-btn active" data-scale="MINOR_PENTATONIC">MINOR PENTATONIC</button>
                 <button class="scale-btn" data-scale="MAJOR">MAJOR (BRIGHT)</button>
                 <button class="scale-btn" data-scale="MINOR">MINOR (DARK)</button>
                 <button class="scale-btn" data-scale="DORIAN">DORIAN (COOL)</button>
                 <button class="scale-btn" data-scale="LYDIAN">LYDIAN (ETHEREAL)</button>
                 <button class="scale-btn" data-scale="RYUKYU">RYUKYU (ISLAND)</button>
-                <button class="scale-btn" data-scale="MIYAKOBUSHI">MIYAKOBUSHI (JAPAN)</button>
-                <button class="scale-btn" data-scale="WHOLE_TONE">WHOLE TONE (DREAM)</button>
+                <button class="scale-btn" data-scale="MIYAKOBUSHI">MIYAKOBUSHI</button>
+                <button class="scale-btn" data-scale="WHOLE_TONE">WHOLE TONE</button>
             </div>
         </div>
     </div>
@@ -172,7 +190,7 @@
         
         let prevNotePos = null;
 
-        // --- 1. Visuals ---
+        // --- Visuals ---
         const scene = new THREE.Scene();
         const width = window.innerWidth;
         const height = window.innerHeight;
@@ -239,10 +257,10 @@
         }
         animate();
 
-        // --- 2. Audio ---
+        // --- Audio ---
         let localADSR = { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1.5 };
-        // ★修正: Droneのデフォルト音量を少し上げる
-        let localMixer = { synth: -6, drone: -10 }; 
+        // ★修正: Droneのデフォルト音量をアップ(-10 -> -5)
+        let localMixer = { synth: -6, drone: -5 }; 
         let localEQ = { low: {freq:100, gain:0}, mid: {freq:1000, gain:0}, high: {freq:5000, gain:0} };
 
         // Scale Generator
@@ -283,25 +301,30 @@
             await Tone.start();
             limiter = new Tone.Limiter(-1).toDestination();
             chorus = new Tone.Chorus(4, 2.5, 0.5);
-            reverb = new Tone.Reverb({ decay: 4, wet: 0.5 });
+            reverb = new Tone.Reverb({ decay: 6, wet: 0.6 }); // リバーブを深く
             eqLow = new Tone.Filter({ type: "lowshelf", frequency: localEQ.low.freq, gain: localEQ.low.gain, rolloff: -12 });
             eqMid = new Tone.Filter({ type: "peaking", frequency: localEQ.mid.freq, gain: localEQ.mid.gain, Q: 2.5 });
             eqHigh = new Tone.Filter({ type: "highshelf", frequency: localEQ.high.freq, gain: localEQ.high.gain, rolloff: -12 });
-            reverb.connect(limiter); chorus.connect(reverb);
-            eqHigh.connect(chorus); eqMid.connect(eqHigh); eqLow.connect(eqMid);
+            
+            reverb.connect(limiter); 
+            chorus.connect(reverb);
+            eqHigh.connect(chorus); 
+            eqMid.connect(eqHigh); 
+            eqLow.connect(eqMid);
             
             synth = new Tone.PolySynth(Tone.Synth, {
                 maxPolyphony: 20, volume: localMixer.synth, oscillator: { type: "custom", partials: [1] }, envelope: localADSR
             }).connect(eqLow);
             
-            // ★修正: Droneを Triangle Wave に変更して存在感を出す
-            droneSynth = new Tone.PolySynth(Tone.AMSynth, {
+            // ★修正: Droneを確実に聞こえる Synth + LowPass に変更
+            const droneFilter = new Tone.Filter(800, "lowpass");
+            droneSynth = new Tone.PolySynth(Tone.Synth, {
                 maxPolyphony: 6, 
                 volume: localMixer.drone, 
-                oscillator: { type: "triangle" }, // Sine -> Triangle
-                envelope: { attack: 3, decay: 1, sustain: 1, release: 5 }, 
-                harmonicity: 0.5, modulation: { type: "sine" }
-            }).connect(reverb);
+                oscillator: { type: "fatcustom", spread: 20, count: 3, partials: [1, 0.5, 0.3] }, // 太い音
+                envelope: { attack: 2, decay: 0, sustain: 1, release: 5 }
+            }).connect(droneFilter);
+            droneFilter.connect(reverb);
             
             updateSynthWave(waveBuffer);
 
@@ -317,18 +340,21 @@
             const triggerDrone = () => {
                 if (!isDroneOn || !isStarted) { setTimeout(triggerDrone, 1000); return; }
                 const currentNotes = SCALES[currentScaleName];
-                const lowNotes = currentNotes.slice(0, 10); // 範囲を少し広げる
+                if (!currentNotes || currentNotes.length === 0) { setTimeout(triggerDrone, 1000); return; }
+
+                // 低音域のみ抽出 (C2〜B3あたり)
+                const lowNotes = currentNotes.filter(n => n.includes('2') || n.includes('3'));
+                if (lowNotes.length === 0) { setTimeout(triggerDrone, 1000); return; }
+
                 const note = lowNotes[Math.floor(Math.random() * lowNotes.length)];
                 
-                // ★修正: 音程をそのまま使う (Transposeなし)
-                // C2スタートなのでそのまま鳴らせばしっかり聞こえる
-                const droneFreq = note; 
-                
-                droneSynth.triggerAttackRelease(droneFreq, 4 + Math.random()*4, Tone.now(), 0.4);
-                setTimeout(triggerDrone, 2000 + Math.random() * 3000);
+                // 長いリリースで重ねる
+                droneSynth.triggerAttackRelease(note, 6, Tone.now());
+                setTimeout(triggerDrone, 4000); // 4秒おきに鳴らす
             };
-            triggerDrone(); setTimeout(triggerDrone, 3000);
+            triggerDrone();
         }
+
         const droneBtn = document.getElementById('drone-btn');
         droneBtn.addEventListener('click', (e) => {
             e.stopPropagation(); isDroneOn = !isDroneOn;
@@ -538,12 +564,11 @@
             const yPos = -(data.normY - 0.5) * playAreaSize + playAreaOffsetY;
             const pos = new THREE.Vector3(xPos, yPos, 0);
 
-            // ★ Visual Tweak: Additive Blending & Lower Opacity
             const mesh = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.0, 64), new THREE.MeshBasicMaterial({ 
                 color: data.id === socket.id ? 0x00ffcc : 0xff00cc, 
                 transparent: true, 
                 side: THREE.DoubleSide,
-                blending: THREE.AdditiveBlending // 光のように重ねる
+                blending: THREE.AdditiveBlending 
             }));
             mesh.position.copy(pos);
             scene.add(mesh);
