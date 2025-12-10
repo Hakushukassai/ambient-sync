@@ -7,7 +7,6 @@
     <style>
         body { margin: 0; overflow: hidden; background: #080808; touch-action: none; color: white; font-family: monospace; }
         
-        /* --- コントロールパネル --- */
         #controls {
             position: fixed; bottom: 0; left: 0; width: 100%; height: 280px; 
             background: linear-gradient(transparent, rgba(0,0,0,0.95) 15%);
@@ -69,29 +68,8 @@
         button:hover { background: rgba(0, 255, 204, 0.1); border-color: #00ffcc; }
         button.active { background: #00ffcc; color: #000; border-color: #00ffcc; box-shadow: 0 0 15px rgba(0,255,204,0.6); text-shadow: none; font-weight: bold; }
 
-        .scale-grid { 
-            display: grid; 
-            grid-template-columns: 1fr 1fr; 
-            gap: 4px; 
-            width: 100%; 
-            margin-top: 5px; 
-            height: 100%; 
-            overflow-y: auto; 
-            align-content: start;
-        }
-        .scale-btn { 
-            padding: 8px 4px; 
-            font-size: 9px; 
-            text-align: left; 
-            width: 100%; 
-            white-space: nowrap; 
-            overflow: hidden; 
-            text-overflow: ellipsis; 
-            touch-action: pan-x; 
-            border: 1px solid #333; 
-            background: rgba(0,0,0,0.3); 
-            box-sizing: border-box; 
-        }
+        .scale-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; margin-top: 5px; height: 100%; overflow-y: auto; align-content: start; }
+        .scale-btn { padding: 8px 4px; font-size: 9px; text-align: left; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; touch-action: pan-x; border: 1px solid #333; background: rgba(0,0,0,0.3); box-sizing: border-box; }
         .scale-btn.active { border-color: #00ffcc; background: rgba(0,255,204,0.2); color: white; box-shadow: 0 0 8px rgba(0,255,204,0.3); }
 
         #overlay {
@@ -178,8 +156,8 @@
         const socket = io();
         let isStarted = false;
         
-        let synth, limiter, chorus, reverb, fft; // ★FFT追加
-        let eqLow, eqMid, eqHigh; 
+        let synth, limiter, chorus, reverb, fft; 
+        let eqLow, eqMid, eqHigh, globalFilter; // ★GlobalFilter追加
         let droneSynth;
         let isDroneOn = true;
 
@@ -228,7 +206,6 @@
             eCanvas.width = 240; eCanvas.height = 100;
             aCanvas.width = 240; aCanvas.height = 70;
             drawWave(waveBuffer); 
-            // EQはアニメーションループで描画するのでここでは一旦呼ばない
             drawADSRVisual();
         }
         window.addEventListener('resize', updateLayout);
@@ -237,8 +214,6 @@
         const visualObjects = []; 
         function animate() {
             requestAnimationFrame(animate);
-
-            // ★スペクトラムとEQを毎フレーム描画
             if(isStarted) drawEQ();
 
             const now = Date.now();
@@ -264,8 +239,8 @@
 
         // --- Audio ---
         let localADSR = { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1.5 };
-        let localMixer = { synth: -6, drone: -5 }; 
-        let localEQ = { low: {freq:100, gain:0}, mid: {freq:1000, gain:0}, high: {freq:5000, gain:0} };
+        let localMixer = { synth: -4, drone: -6 }; 
+        let localEQ = { low: {freq:100, gain:4}, mid: {freq:1000, gain:-2}, high: {freq:5000, gain:-6} };
 
         const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
         function generateScale(intervals) {
@@ -303,30 +278,39 @@
             if (isStarted) return;
             await Tone.start();
             
-            // ★FFT Analyserの追加
-            fft = new Tone.Analyser("fft", 64);
-            fft.smoothing = 0.8;
+            // ★ FFTサイズを256に増やして低音の解像度を確保
+            fft = new Tone.Analyser("fft", 256);
+            fft.smoothing = 0.85; // 滑らかに
 
             limiter = new Tone.Limiter(-1).connect(fft);
-            fft.toDestination(); // FFTを通して出力
+            fft.toDestination(); 
 
             chorus = new Tone.Chorus(4, 2.5, 0.5);
-            reverb = new Tone.Reverb({ decay: 6, wet: 0.6 }); 
+            reverb = new Tone.Reverb({ decay: 5, wet: 0.5 }); 
+            
+            // ★ 高音が痛いのを防ぐグローバルフィルター (LPF @ 4000Hz)
+            globalFilter = new Tone.Filter(4000, "lowpass", -12);
+
             eqLow = new Tone.Filter({ type: "lowshelf", frequency: localEQ.low.freq, gain: localEQ.low.gain, rolloff: -12 });
             eqMid = new Tone.Filter({ type: "peaking", frequency: localEQ.mid.freq, gain: localEQ.mid.gain, Q: 2.5 });
             eqHigh = new Tone.Filter({ type: "highshelf", frequency: localEQ.high.freq, gain: localEQ.high.gain, rolloff: -12 });
             
             reverb.connect(limiter); 
             chorus.connect(reverb);
-            eqHigh.connect(chorus); 
+            globalFilter.connect(chorus); // フィルターを通してからエフェクトへ
+            eqHigh.connect(globalFilter); 
             eqMid.connect(eqHigh); 
             eqLow.connect(eqMid);
             
+            // ★ SynthをTriangleベースに変更し、少し太くする
             synth = new Tone.PolySynth(Tone.Synth, {
-                maxPolyphony: 20, volume: localMixer.synth, oscillator: { type: "custom", partials: [1] }, envelope: localADSR
+                maxPolyphony: 20, 
+                volume: localMixer.synth, 
+                oscillator: { type: "triangle" }, // Sine -> Triangle (存在感アップ)
+                envelope: localADSR
             }).connect(eqLow);
             
-            const droneFilter = new Tone.Filter(800, "lowpass");
+            const droneFilter = new Tone.Filter(600, "lowpass");
             droneSynth = new Tone.PolySynth(Tone.Synth, {
                 maxPolyphony: 6, 
                 volume: localMixer.drone, 
@@ -344,10 +328,9 @@
         }
         document.getElementById('overlay').addEventListener('click', initAudio);
 
-        // --- Drone Logic (Fix: Restart loop on toggle) ---
         function startDroneLoop() {
             const triggerDrone = () => {
-                if (!isDroneOn || !isStarted) { return; } // ここでループが途切れる
+                if (!isDroneOn || !isStarted) { return; } 
                 const currentNotes = SCALES[currentScaleName];
                 if (!currentNotes || currentNotes.length === 0) { setTimeout(triggerDrone, 1000); return; }
 
@@ -368,7 +351,6 @@
             if (isDroneOn) { 
                 droneBtn.textContent = "AMBIENT: ON"; 
                 droneBtn.classList.add("active"); 
-                // ★修正: ONにした時にループを再開させる
                 if(isStarted) startDroneLoop();
             } else { 
                 droneBtn.textContent = "AMBIENT: OFF"; 
@@ -378,7 +360,7 @@
         });
         droneBtn.addEventListener('touchstart', (e) => e.stopPropagation(), {passive: false});
 
-        // --- EQ & Spectrum ---
+        // --- EQ & Spectrum (Fixed Mapping) ---
         const eqCanvas = document.getElementById('eq-canvas'); const eqCtx = eqCanvas.getContext('2d'); const eqReadout = document.getElementById('eq-readout');
         const minFreq = 20; const maxFreq = 20000;
         function xToFreq(x, width) { return minFreq * Math.pow(maxFreq / minFreq, x / width); }
@@ -399,18 +381,37 @@
             const w = eqCanvas.width; const h = eqCanvas.height; 
             eqCtx.clearRect(0, 0, w, h);
 
-            // ★スペクトラム描画 (背景として)
+            // ★ 修正: スペクトラムの軸合わせ
             if (fft) {
                 const values = fft.getValue(); // dB array
-                const barWidth = w / values.length;
-                eqCtx.fillStyle = 'rgba(0, 255, 204, 0.15)'; // 淡い光
-                for (let i = 0; i < values.length; i++) {
-                    const val = values[i]; // range usually -100 to 0
-                    if (val === -Infinity) continue;
-                    // Map dB to height: -100db -> 0px, 0db -> height
-                    const barHeight = Math.max(0, (val + 100) / 100 * h);
-                    eqCtx.fillRect(i * barWidth, h - barHeight, barWidth - 1, barHeight);
+                const nyquist = Tone.context.sampleRate / 2;
+                const fftSize = values.length;
+                
+                eqCtx.fillStyle = 'rgba(0, 255, 204, 0.15)'; 
+                eqCtx.beginPath();
+                eqCtx.moveTo(0, h);
+
+                // 各FFTビンが「どの周波数か」を計算し、それをCanvasのX座標に変換して描画
+                for (let i = 0; i < fftSize; i++) {
+                    const db = values[i];
+                    if (db === -Infinity) continue;
+                    
+                    // 線形な周波数 (Linear Frequency)
+                    const freq = i * (nyquist / fftSize);
+                    
+                    // ログスケールのX座標に変換 (Logarithmic X)
+                    const x = freqToX(freq, w);
+                    
+                    if (x < 0) continue; 
+                    if (x > w) break; // 画面外に出たら終了
+
+                    const barHeight = Math.max(0, (db + 100) / 100 * h); // -100dB ~ 0dB scale
+                    const y = h - barHeight;
+                    
+                    eqCtx.lineTo(x, y);
                 }
+                eqCtx.lineTo(w, h);
+                eqCtx.fill();
             }
 
             // EQ Grid
@@ -446,7 +447,6 @@
                     if(draggingPoint==='high'){ eqHigh.frequency.value=f; eqHigh.gain.value=g; }
                 }
                 eqReadout.textContent=`${draggingPoint.toUpperCase()}: ${Math.round(f)}Hz / ${g.toFixed(1)}dB`; 
-                // drawEQ() is in animate loop now
                 if (Date.now() - lastEqSyncTime > 30) { socket.emit('update_eq', localEQ); lastEqSyncTime = Date.now(); }
             }
         }
