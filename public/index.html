@@ -20,8 +20,8 @@
         .panel-section {
             display: flex; flex-direction: column; align-items: center;
             background: rgba(10, 10, 10, 0.85); border: 1px solid #333; border-radius: 6px;
-            padding: 10px; /* パディングを少し減らしてスペース確保 */
-            backdrop-filter: blur(10px); width: 260px; height: 210px; /* 高さを少し確保 */
+            padding: 10px;
+            backdrop-filter: blur(10px); width: 260px; height: 210px;
             justify-content: flex-start; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
             flex-shrink: 0; position: relative; transition: transform 0.2s, box-shadow 0.2s;
         }
@@ -69,11 +69,10 @@
         button:hover { background: rgba(0, 255, 204, 0.1); border-color: #00ffcc; }
         button.active { background: #00ffcc; color: #000; border-color: #00ffcc; box-shadow: 0 0 15px rgba(0,255,204,0.6); text-shadow: none; font-weight: bold; }
 
-        /* --- ★修正: スマホでも崩れないグリッド設定 --- */
         .scale-grid { 
             display: grid; 
-            grid-template-columns: 1fr 1fr; /* 常に2列にする */
-            gap: 4px; /* 隙間を詰める */
+            grid-template-columns: 1fr 1fr; 
+            gap: 4px; 
             width: 100%; 
             margin-top: 5px; 
             height: 100%; 
@@ -81,7 +80,7 @@
             align-content: start;
         }
         .scale-btn { 
-            padding: 8px 4px; /* パディング調整 */
+            padding: 8px 4px; 
             font-size: 9px; 
             text-align: left; 
             width: 100%; 
@@ -91,7 +90,7 @@
             touch-action: pan-x; 
             border: 1px solid #333; 
             background: rgba(0,0,0,0.3); 
-            box-sizing: border-box; /* 枠線を含めたサイズ計算 */
+            box-sizing: border-box; 
         }
         .scale-btn.active { border-color: #00ffcc; background: rgba(0,255,204,0.2); color: white; box-shadow: 0 0 8px rgba(0,255,204,0.3); }
 
@@ -132,7 +131,7 @@
         </div>
 
         <div class="panel-section">
-            <div class="label">2. EQ (SYNTH)</div>
+            <div class="label">2. EQ & SPECTRUM</div>
             <div id="eq-container" style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center;">
                 <canvas id="eq-canvas" width="240" height="100"></canvas>
                 <div class="eq-values" id="eq-readout">DRAG POINTS</div>
@@ -179,7 +178,7 @@
         const socket = io();
         let isStarted = false;
         
-        let synth, limiter, chorus, reverb;
+        let synth, limiter, chorus, reverb, fft; // ★FFT追加
         let eqLow, eqMid, eqHigh; 
         let droneSynth;
         let isDroneOn = true;
@@ -228,7 +227,9 @@
             wCanvas.width = 240; wCanvas.height = 90;
             eCanvas.width = 240; eCanvas.height = 100;
             aCanvas.width = 240; aCanvas.height = 70;
-            drawWave(waveBuffer); drawEQ(); drawADSRVisual();
+            drawWave(waveBuffer); 
+            // EQはアニメーションループで描画するのでここでは一旦呼ばない
+            drawADSRVisual();
         }
         window.addEventListener('resize', updateLayout);
         setTimeout(updateLayout, 100);
@@ -236,6 +237,10 @@
         const visualObjects = []; 
         function animate() {
             requestAnimationFrame(animate);
+
+            // ★スペクトラムとEQを毎フレーム描画
+            if(isStarted) drawEQ();
+
             const now = Date.now();
             for (let i = visualObjects.length - 1; i >= 0; i--) {
                 const obj = visualObjects[i];
@@ -259,11 +264,9 @@
 
         // --- Audio ---
         let localADSR = { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1.5 };
-        // ★修正: Droneのデフォルト音量をアップ(-10 -> -5)
         let localMixer = { synth: -6, drone: -5 }; 
         let localEQ = { low: {freq:100, gain:0}, mid: {freq:1000, gain:0}, high: {freq:5000, gain:0} };
 
-        // Scale Generator
         const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
         function generateScale(intervals) {
             const notes = [];
@@ -299,9 +302,16 @@
         async function initAudio() {
             if (isStarted) return;
             await Tone.start();
-            limiter = new Tone.Limiter(-1).toDestination();
+            
+            // ★FFT Analyserの追加
+            fft = new Tone.Analyser("fft", 64);
+            fft.smoothing = 0.8;
+
+            limiter = new Tone.Limiter(-1).connect(fft);
+            fft.toDestination(); // FFTを通して出力
+
             chorus = new Tone.Chorus(4, 2.5, 0.5);
-            reverb = new Tone.Reverb({ decay: 6, wet: 0.6 }); // リバーブを深く
+            reverb = new Tone.Reverb({ decay: 6, wet: 0.6 }); 
             eqLow = new Tone.Filter({ type: "lowshelf", frequency: localEQ.low.freq, gain: localEQ.low.gain, rolloff: -12 });
             eqMid = new Tone.Filter({ type: "peaking", frequency: localEQ.mid.freq, gain: localEQ.mid.gain, Q: 2.5 });
             eqHigh = new Tone.Filter({ type: "highshelf", frequency: localEQ.high.freq, gain: localEQ.high.gain, rolloff: -12 });
@@ -316,12 +326,11 @@
                 maxPolyphony: 20, volume: localMixer.synth, oscillator: { type: "custom", partials: [1] }, envelope: localADSR
             }).connect(eqLow);
             
-            // ★修正: Droneを確実に聞こえる Synth + LowPass に変更
             const droneFilter = new Tone.Filter(800, "lowpass");
             droneSynth = new Tone.PolySynth(Tone.Synth, {
                 maxPolyphony: 6, 
                 volume: localMixer.drone, 
-                oscillator: { type: "fatcustom", spread: 20, count: 3, partials: [1, 0.5, 0.3] }, // 太い音
+                oscillator: { type: "fatcustom", spread: 20, count: 3, partials: [1, 0.5, 0.3] }, 
                 envelope: { attack: 2, decay: 0, sustain: 1, release: 5 }
             }).connect(droneFilter);
             droneFilter.connect(reverb);
@@ -335,35 +344,41 @@
         }
         document.getElementById('overlay').addEventListener('click', initAudio);
 
-        // Drone Logic
+        // --- Drone Logic (Fix: Restart loop on toggle) ---
         function startDroneLoop() {
             const triggerDrone = () => {
-                if (!isDroneOn || !isStarted) { setTimeout(triggerDrone, 1000); return; }
+                if (!isDroneOn || !isStarted) { return; } // ここでループが途切れる
                 const currentNotes = SCALES[currentScaleName];
                 if (!currentNotes || currentNotes.length === 0) { setTimeout(triggerDrone, 1000); return; }
 
-                // 低音域のみ抽出 (C2〜B3あたり)
                 const lowNotes = currentNotes.filter(n => n.includes('2') || n.includes('3'));
                 if (lowNotes.length === 0) { setTimeout(triggerDrone, 1000); return; }
 
                 const note = lowNotes[Math.floor(Math.random() * lowNotes.length)];
-                
-                // 長いリリースで重ねる
                 droneSynth.triggerAttackRelease(note, 6, Tone.now());
-                setTimeout(triggerDrone, 4000); // 4秒おきに鳴らす
+                setTimeout(triggerDrone, 4000); 
             };
             triggerDrone();
         }
 
         const droneBtn = document.getElementById('drone-btn');
         droneBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); isDroneOn = !isDroneOn;
-            if (isDroneOn) { droneBtn.textContent = "AMBIENT: ON"; droneBtn.classList.add("active"); } 
-            else { droneBtn.textContent = "AMBIENT: OFF"; droneBtn.classList.remove("active"); droneSynth.releaseAll(); }
+            e.stopPropagation(); 
+            isDroneOn = !isDroneOn;
+            if (isDroneOn) { 
+                droneBtn.textContent = "AMBIENT: ON"; 
+                droneBtn.classList.add("active"); 
+                // ★修正: ONにした時にループを再開させる
+                if(isStarted) startDroneLoop();
+            } else { 
+                droneBtn.textContent = "AMBIENT: OFF"; 
+                droneBtn.classList.remove("active"); 
+                droneSynth.releaseAll(); 
+            }
         });
         droneBtn.addEventListener('touchstart', (e) => e.stopPropagation(), {passive: false});
 
-        // --- EQ ---
+        // --- EQ & Spectrum ---
         const eqCanvas = document.getElementById('eq-canvas'); const eqCtx = eqCanvas.getContext('2d'); const eqReadout = document.getElementById('eq-readout');
         const minFreq = 20; const maxFreq = 20000;
         function xToFreq(x, width) { return minFreq * Math.pow(maxFreq / minFreq, x / width); }
@@ -379,20 +394,43 @@
         }
         let draggingPoint = null;
         let lastEqSyncTime = 0;
+        
         function drawEQ() {
-            const w = eqCanvas.width; const h = eqCanvas.height; eqCtx.clearRect(0, 0, w, h);
+            const w = eqCanvas.width; const h = eqCanvas.height; 
+            eqCtx.clearRect(0, 0, w, h);
+
+            // ★スペクトラム描画 (背景として)
+            if (fft) {
+                const values = fft.getValue(); // dB array
+                const barWidth = w / values.length;
+                eqCtx.fillStyle = 'rgba(0, 255, 204, 0.15)'; // 淡い光
+                for (let i = 0; i < values.length; i++) {
+                    const val = values[i]; // range usually -100 to 0
+                    if (val === -Infinity) continue;
+                    // Map dB to height: -100db -> 0px, 0db -> height
+                    const barHeight = Math.max(0, (val + 100) / 100 * h);
+                    eqCtx.fillRect(i * barWidth, h - barHeight, barWidth - 1, barHeight);
+                }
+            }
+
+            // EQ Grid
             eqCtx.strokeStyle = 'rgba(255,255,255,0.1)'; eqCtx.lineWidth = 1; eqCtx.beginPath();
             [100, 1000, 10000].forEach(f => { const x = freqToX(f, w); eqCtx.moveTo(x, 0); eqCtx.lineTo(x, h); });
             eqCtx.moveTo(0, h/2); eqCtx.lineTo(w, h/2); eqCtx.stroke();
+            
+            // EQ Curve
             eqCtx.strokeStyle = '#00ffcc'; eqCtx.lineWidth = 2; eqCtx.beginPath();
             for (let x = 0; x < w; x+=2) { const y = dbToY(getEQResponse(xToFreq(x, w)), h); if (x === 0) eqCtx.moveTo(x, y); else eqCtx.lineTo(x, y); }
-            eqCtx.stroke(); eqCtx.lineTo(w, h/2); eqCtx.lineTo(0, h/2); eqCtx.fillStyle = 'rgba(0, 255, 204, 0.1)'; eqCtx.fill();
+            eqCtx.stroke(); 
+            
+            // EQ Points
             [ {id:'low', c:'#ff0055'}, {id:'mid', c:'#ffff00'}, {id:'high', c:'#00ccff'} ].forEach(p => {
                 const d = localEQ[p.id]; const x = freqToX(d.freq, w); const y = dbToY(d.gain, h);
                 eqCtx.fillStyle = p.c; eqCtx.beginPath(); eqCtx.arc(x, y, 6, 0, Math.PI*2); eqCtx.fill();
                 if(draggingPoint===p.id){ eqCtx.strokeStyle='#fff'; eqCtx.lineWidth=2; eqCtx.stroke(); }
             });
         }
+        
         function handleEQMove(cx, cy, isDown) {
             const r = eqCanvas.getBoundingClientRect(); const x = Math.max(0, Math.min(r.width, cx - r.left)); const y = Math.max(0, Math.min(r.height, cy - r.top));
             if (isDown) {
@@ -407,11 +445,12 @@
                     if(draggingPoint==='mid'){ eqMid.frequency.value=f; eqMid.gain.value=g; }
                     if(draggingPoint==='high'){ eqHigh.frequency.value=f; eqHigh.gain.value=g; }
                 }
-                eqReadout.textContent=`${draggingPoint.toUpperCase()}: ${Math.round(f)}Hz / ${g.toFixed(1)}dB`; drawEQ();
+                eqReadout.textContent=`${draggingPoint.toUpperCase()}: ${Math.round(f)}Hz / ${g.toFixed(1)}dB`; 
+                // drawEQ() is in animate loop now
                 if (Date.now() - lastEqSyncTime > 30) { socket.emit('update_eq', localEQ); lastEqSyncTime = Date.now(); }
             }
         }
-        function endEQDrag() { if(draggingPoint){ socket.emit('update_eq', localEQ); draggingPoint=null; eqReadout.textContent="DRAG POINTS"; drawEQ(); }}
+        function endEQDrag() { if(draggingPoint){ socket.emit('update_eq', localEQ); draggingPoint=null; eqReadout.textContent="DRAG POINTS"; }}
         eqCanvas.addEventListener('mousedown', e=>handleEQMove(e.clientX,e.clientY,true)); window.addEventListener('mousemove', e=>{if(draggingPoint)handleEQMove(e.clientX,e.clientY,false)}); window.addEventListener('mouseup', endEQDrag);
         eqCanvas.addEventListener('touchstart', e=>{e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,true)},{passive:false}); window.addEventListener('touchmove', e=>{if(draggingPoint){e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,false)}},{passive:false}); window.addEventListener('touchend', endEQDrag);
         
