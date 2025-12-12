@@ -22,7 +22,7 @@
             padding: 10px;
             backdrop-filter: blur(10px); width: 260px; height: 210px;
             justify-content: flex-start; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
-            flex-shrink: 0; position: relative; transition: transform 0.2s, box-shadow 0.2s;
+            flex-shrink: 0; position: relative; transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
         }
         .panel-section:hover { border-color: #555; box-shadow: 0 0 20px rgba(0, 255, 204, 0.1); }
         .panel-section::after {
@@ -80,6 +80,15 @@
         }
         #overlay span { margin-top: 15px; font-size: 10px; color: #888; letter-spacing: 1px; }
 
+        /* ステータスバー */
+        #status-bar {
+            position: fixed; top: 20px; left: 20px; z-index: 100;
+            display: flex; gap: 10px; align-items: center;
+            font-size: 10px; color: #888;
+        }
+        #user-count { font-weight: bold; }
+        .my-color-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-left: 5px; border: 1px solid #fff; }
+
         /* センサーボタン */
         #sensor-btn {
             position: fixed; top: 20px; right: 20px; z-index: 100;
@@ -94,22 +103,18 @@
             position: fixed; top: 60px; right: 20px; z-index: 90;
             display: flex; gap: 12px;
         }
-        .sensor-group {
-            display: flex; flex-direction: column; align-items: center; gap: 5px;
-        }
+        .sensor-group { display: flex; flex-direction: column; align-items: center; gap: 5px; }
         .sensor-meter {
             width: 10px; height: 80px;
             background: rgba(255,255,255,0.1);
             border-radius: 4px;
-            position: relative;
-            overflow: hidden;
+            position: relative; overflow: hidden;
             display: flex; flex-direction: column-reverse;
             border: 1px solid #333;
         }
         .sensor-fill {
             width: 100%; height: 50%;
-            background: #00ffcc;
-            transition: height 0.1s;
+            background: #00ffcc; transition: height 0.1s;
             box-shadow: 0 0 10px #00ffcc;
         }
         .target-btn {
@@ -138,6 +143,11 @@
         <span>PLAY INSIDE THE SQUARE</span>
     </div>
 
+    <div id="status-bar">
+        <span id="user-count">ONLINE: 1</span>
+        <span>YOU: <span id="my-color" class="my-color-dot"></span></span>
+    </div>
+
     <button id="sensor-btn">SENSOR: OFF</button>
     
     <div id="sensor-panel">
@@ -152,7 +162,7 @@
     </div>
 
     <div id="controls">
-        <div class="panel-section">
+        <div class="panel-section" id="panel-wave">
             <div class="label">1. WAVEFORM</div>
             <canvas id="wave-canvas" width="240" height="90"></canvas>
             <div class="btn-group">
@@ -161,7 +171,7 @@
             </div>
         </div>
 
-        <div class="panel-section">
+        <div class="panel-section" id="panel-eq">
             <div class="label">2. EQ & SPECTRUM</div>
             <div id="eq-container" style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center;">
                 <canvas id="eq-canvas" width="240" height="100"></canvas>
@@ -169,7 +179,7 @@
             </div>
         </div>
 
-        <div class="panel-section">
+        <div class="panel-section" id="panel-mixer">
             <div class="label">3. MIXER & AUTO</div>
             <div class="mixer-container">
                 <div class="slider-group"><input type="range" class="vertical" id="vol-synth" min="-60" max="0" step="1" value="-6"><span class="param-label">VOL</span></div>
@@ -177,7 +187,7 @@
             </div>
         </div>
 
-        <div class="panel-section">
+        <div class="panel-section" id="panel-adsr">
             <div class="label">4. ENVELOPE</div>
             <div id="adsr-container">
                 <canvas id="adsr-canvas" width="240" height="70"></canvas>
@@ -190,7 +200,7 @@
             </div>
         </div>
 
-        <div class="panel-section">
+        <div class="panel-section" id="panel-scale">
             <div class="label">5. SCALE (MOOD)</div>
             <div class="scale-grid">
                 <button class="scale-btn active" data-scale="MINOR_PENTATONIC">MINOR PENTATONIC</button>
@@ -208,6 +218,9 @@
     <script>
         const socket = io();
         let isStarted = false;
+        let myId = null;
+        let myColor = '#00ffcc';
+        let connectedUsers = {};
         
         let synth, limiter, chorus, reverb, fft, panner; 
         let eqLow, eqMid, eqHigh, globalFilter; 
@@ -215,7 +228,6 @@
         let playAreaSize = 0;
         let playAreaMesh;
         let playAreaOffsetY = 0; 
-        
         let prevNotePos = null;
 
         // --- Visuals ---
@@ -369,6 +381,19 @@
         }
         document.getElementById('overlay').addEventListener('click', initAudio);
 
+        // --- Visual Feedback Function ---
+        function flashPanel(panelId, color) {
+            const panel = document.getElementById(panelId);
+            if(panel) {
+                panel.style.borderColor = color;
+                panel.style.boxShadow = `0 0 30px ${color}`;
+                setTimeout(() => {
+                    panel.style.borderColor = "#333";
+                    panel.style.boxShadow = "none";
+                }, 200);
+            }
+        }
+
         // --- Sensor Logic & Sync & Mapping ---
         const sensorBtn = document.getElementById('sensor-btn');
         const fillX = document.getElementById('fill-x');
@@ -379,14 +404,16 @@
         let isSensorActive = false;
         let lastSensorSync = 0;
         
+        // ★ターゲット候補に ATTACK, SUSTAIN を追加
         const TARGETS_X = ['FILTER', 'PAN', 'VOL'];
-        const TARGETS_Y = ['REVERB', 'DECAY', 'RELEASE'];
+        const TARGETS_Y = ['REVERB', 'ATTACK', 'DECAY', 'SUSTAIN', 'RELEASE'];
         let myTargets = { x: 'FILTER', y: 'REVERB' };
 
         // ★ 音声だけでなくUIも更新する関数 (全員共有)
         function applyAudioParam(target, val) {
             if (!synth) return;
 
+            // X軸系
             if (target === 'FILTER') {
                 const freq = 100 * Math.pow(80, val); 
                 if(globalFilter) globalFilter.frequency.rampTo(freq, 0.1);
@@ -398,41 +425,53 @@
             else if (target === 'VOL') {
                 const vol = (val * 60) - 60;
                 synth.volume.rampTo(vol, 0.1);
-                // ★UI更新: スライダーを動かす
                 const volSlider = document.getElementById('vol-synth');
                 if(volSlider) volSlider.value = vol;
             } 
+            // Y軸系
             else if (target === 'REVERB') {
                 if(reverb) reverb.wet.rampTo(val, 0.1);
             } 
+            else if (target === 'ATTACK') {
+                // val(0-1) -> 0.01 - 2.0s
+                const a = 0.01 + (val * 1.99);
+                synth.set({ envelope: { attack: a } });
+                const aSlider = document.getElementById('adsr-a');
+                if(aSlider) { aSlider.value = a; drawADSRVisual(); }
+            }
             else if (target === 'DECAY') {
-                // val(0-1) -> 0.1-2.0
+                // val(0-1) -> 0.1-2.0s
                 const d = 0.1 + (val * 1.9);
                 synth.set({ envelope: { decay: d } });
-                // ★UI更新: ADSRスライダーとグラフ
                 const dSlider = document.getElementById('adsr-d');
-                if(dSlider) {
-                    dSlider.value = d;
-                    drawADSRVisual(); // グラフ再描画
-                }
+                if(dSlider) { dSlider.value = d; drawADSRVisual(); }
             } 
+            else if (target === 'SUSTAIN') {
+                // val(0-1) -> 0.0-1.0
+                const s = val;
+                synth.set({ envelope: { sustain: s } });
+                const sSlider = document.getElementById('adsr-s');
+                if(sSlider) { sSlider.value = s; drawADSRVisual(); }
+            }
             else if (target === 'RELEASE') {
-                // val(0-1) -> 0.1-5.0
+                // val(0-1) -> 0.1-5.0s
                 const r = 0.1 + (val * 4.9);
                 synth.set({ envelope: { release: r } });
-                // ★UI更新: ADSRスライダーとグラフ
                 const rSlider = document.getElementById('adsr-r');
-                if(rSlider) {
-                    rSlider.value = r;
-                    drawADSRVisual(); // グラフ再描画
-                }
+                if(rSlider) { rSlider.value = r; drawADSRVisual(); }
             }
         }
 
         function updateSensorVisuals(target, val) {
-            // 自分が見ているメーターと同じターゲットなら動かす
             if (myTargets.x === target) fillX.style.height = (val * 100) + "%";
             if (myTargets.y === target) fillY.style.height = (val * 100) + "%";
+        }
+
+        // 視覚的フィードバックのトリガー
+        function triggerVisualFeedback(target, color) {
+            if (target === 'FILTER' || target === 'REVERB') flashPanel('panel-eq', color); // EQパネル代用
+            if (target === 'PAN' || target === 'VOL') flashPanel('panel-mixer', color);
+            if (['ATTACK','DECAY','SUSTAIN','RELEASE'].includes(target)) flashPanel('panel-adsr', color);
         }
 
         function handleSensor(e) {
@@ -446,13 +485,11 @@
             const normBeta = Math.max(-1, Math.min(1, (beta - 45) / 45));
             const valY = (1.0 - ((normBeta + 1) / 2)); 
 
-            // 即時反映
             applyAudioParam(myTargets.x, valX);
             applyAudioParam(myTargets.y, valY);
             updateSensorVisuals(myTargets.x, valX);
             updateSensorVisuals(myTargets.y, valY);
 
-            // 送信
             const now = Date.now();
             if (now - lastSensorSync > 100) {
                 socket.emit('update_param', { target: myTargets.x, value: valX });
@@ -503,59 +540,107 @@
             }
         }
 
-        // --- 受信イベント (全員同期) ---
+        // --- Socket Events ---
         
+        socket.on('init_setup', (data) => {
+            myId = data.id;
+            myColor = data.color;
+            document.getElementById('my-color').style.backgroundColor = myColor;
+            
+            // パラメータ初期反映
+            if(data.params) {
+                for (const [key, val] of Object.entries(data.params)) {
+                    applyAudioParam(key, val);
+                }
+            }
+            if(data.waveform) waveBuffer = data.waveform;
+            if(data.adsr) { localADSR = data.adsr; slA.value=localADSR.attack; slD.value=localADSR.decay; slS.value=localADSR.sustain; slR.value=localADSR.release; }
+            if(data.mixer) updateMixer(data.mixer);
+            if(data.eq) { localEQ = data.eq; }
+            if(data.scale) { currentScaleName = data.scale; scaleBtns.forEach(btn => { if(btn.dataset.scale === currentScaleName) btn.classList.add('active'); else btn.classList.remove('active'); }); }
+            if(data.auto) { localAuto = data.auto; updateAutoUI(); }
+            
+            resizeCanvases();
+        });
+
+        socket.on('update_users', (data) => {
+            document.getElementById('user-count').textContent = `ONLINE: ${data.count}`;
+            connectedUsers = data.users;
+        });
+
         socket.on('sync_all_params', (params) => {
             for (const [key, val] of Object.entries(params)) {
                 applyAudioParam(key, val);
-                updateSensorVisuals(key, val);
             }
         });
 
         socket.on('sync_param', (data) => {
+            // 音声とUIを更新
             applyAudioParam(data.target, data.value);
-            updateSensorVisuals(data.target, data.value);
+            // 視覚的フィードバック（誰かが操作した！）
+            const user = connectedUsers[data.userId];
+            const color = user ? user.color : '#fff';
+            triggerVisualFeedback(data.target, color);
         });
 
-        // --- Auto Play UI ---
-        const autoBtn = document.getElementById('auto-btn');
-        const autoSpeed = document.getElementById('auto-speed');
-        let lastAutoSync = 0;
+        // Other Syncs...
+        socket.on('sync_waveform', d => { 
+            waveBuffer=d.data; resizeCanvases(); updateSynthWave(d.data); 
+            flashPanel('panel-wave', connectedUsers[d.userId]?.color || '#fff');
+        });
+        socket.on('sync_adsr', d => { 
+            localADSR=d.data; slA.value=d.data.attack; slD.value=d.data.decay; slS.value=d.data.sustain; slR.value=d.data.release; resizeCanvases(); if(synth)synth.set({envelope:d.data});
+            flashPanel('panel-adsr', connectedUsers[d.userId]?.color || '#fff');
+        });
+        socket.on('sync_mixer', d => { updateMixer(d.data); flashPanel('panel-mixer', connectedUsers[d.userId]?.color || '#fff'); });
+        socket.on('sync_eq', d => { 
+            localEQ=d.data; resizeCanvases(); if(eqLow){ eqLow.frequency.value=d.data.low.freq; eqLow.gain.value=d.data.low.gain; eqMid.frequency.value=d.data.mid.freq; eqMid.gain.value=d.data.mid.gain; eqHigh.frequency.value=d.data.high.freq; eqHigh.gain.value=d.data.high.gain; }
+            flashPanel('panel-eq', connectedUsers[d.userId]?.color || '#fff');
+        });
+        socket.on('sync_scale', (d) => { 
+            currentScaleName = d.scale; 
+            scaleBtns.forEach(btn => { if(btn.dataset.scale === currentScaleName) btn.classList.add('active'); else btn.classList.remove('active'); }); 
+            flashPanel('panel-scale', connectedUsers[d.userId]?.color || '#fff');
+        });
+        socket.on('sync_auto', (d) => {
+            localAuto = d.data; updateAutoUI();
+            flashPanel('panel-mixer', connectedUsers[d.userId]?.color || '#fff');
+        });
 
-        function updateAutoUI() {
-            if(localAuto.active) {
-                autoBtn.textContent = "AUTO: ON";
-                autoBtn.classList.add("active");
-            } else {
-                autoBtn.textContent = "AUTO: OFF";
-                autoBtn.classList.remove("active");
+        // Note Trigger with Color
+        socket.on('trigger_note', (data) => {
+            if (!synth) return;
+            synth.triggerAttackRelease(data.note, data.duration);
+            const xPos = (data.normX - 0.5) * playAreaSize;
+            const yPos = -(data.normY - 0.5) * playAreaSize + playAreaOffsetY;
+            const pos = new THREE.Vector3(xPos, yPos, 0);
+
+            let color = 0x00ffcc;
+            if (data.id === 'auto') color = 0xffaa00;
+            else if (connectedUsers[data.id]) color = new THREE.Color(connectedUsers[data.id].color);
+
+            const mesh = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.0, 64), new THREE.MeshBasicMaterial({ 
+                color: color, 
+                transparent: true, 
+                side: THREE.DoubleSide,
+                blending: THREE.AdditiveBlending 
+            }));
+            mesh.position.copy(pos);
+            scene.add(mesh);
+            visualObjects.push({ type: 'ring', mesh, startTime: Date.now(), duration: data.duration });
+
+            if (prevNotePos && data.id !== 'auto') {
+                const points = [prevNotePos.clone(), pos.clone()];
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const material = new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending });
+                const line = new THREE.Line(geometry, material);
+                scene.add(line);
+                visualObjects.push({ type: 'line', mesh: line, startTime: Date.now(), duration: data.duration * 2.0 }); 
             }
-            autoSpeed.value = localAuto.speed;
-        }
-
-        autoBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            localAuto.active = !localAuto.active;
-            socket.emit('update_auto', localAuto);
-            updateAutoUI();
+            if(data.id !== 'auto') prevNotePos = pos;
         });
-        autoBtn.addEventListener('touchstart', (e) => e.stopPropagation(), {passive: false});
 
-        autoSpeed.addEventListener('input', () => {
-            localAuto.speed = parseInt(autoSpeed.value);
-            if(Date.now() - lastAutoSync > 100) { 
-                socket.emit('update_auto', localAuto);
-                lastAutoSync = Date.now();
-            }
-        });
-        autoSpeed.addEventListener('change', () => {
-            socket.emit('update_auto', localAuto);
-        });
-        autoSpeed.addEventListener('touchstart', (e) => e.stopPropagation(), {passive: false});
-        autoSpeed.addEventListener('mousedown', (e) => e.stopPropagation());
-
-
-        // --- EQ & Spectrum ---
+        // EQ/Waveform Helper
         const eqCanvas = document.getElementById('eq-canvas'); const eqCtx = eqCanvas.getContext('2d'); const eqReadout = document.getElementById('eq-readout');
         const minFreq = 20; const maxFreq = 20000;
         function xToFreq(x, width) { return minFreq * Math.pow(maxFreq / minFreq, x / width); }
@@ -575,46 +660,33 @@
         function drawEQ() {
             const w = eqCanvas.width; const h = eqCanvas.height; 
             eqCtx.clearRect(0, 0, w, h);
-
             if (fft) {
                 const values = fft.getValue(); 
                 const nyquist = Tone.context.sampleRate / 2;
                 const fftSize = values.length;
-                
                 eqCtx.fillStyle = 'rgba(0, 255, 204, 0.15)'; 
-                eqCtx.beginPath();
-                eqCtx.moveTo(0, h);
-
+                eqCtx.beginPath(); eqCtx.moveTo(0, h);
                 for (let i = 0; i < fftSize; i++) {
-                    const db = values[i];
-                    if (db === -Infinity) continue;
-                    const freq = i * (nyquist / fftSize);
-                    const x = freqToX(freq, w);
-                    if (x < 0) continue; 
-                    if (x > w) break; 
+                    const db = values[i]; if (db === -Infinity) continue;
+                    const freq = i * (nyquist / fftSize); const x = freqToX(freq, w);
+                    if (x < 0) continue; if (x > w) break; 
                     const barHeight = Math.max(0, (db + 100) / 100 * h);
-                    const y = h - barHeight;
-                    eqCtx.lineTo(x, y);
+                    eqCtx.lineTo(x, h - barHeight);
                 }
-                eqCtx.lineTo(w, h);
-                eqCtx.fill();
+                eqCtx.lineTo(w, h); eqCtx.fill();
             }
-
             eqCtx.strokeStyle = 'rgba(255,255,255,0.1)'; eqCtx.lineWidth = 1; eqCtx.beginPath();
             [100, 1000, 10000].forEach(f => { const x = freqToX(f, w); eqCtx.moveTo(x, 0); eqCtx.lineTo(x, h); });
             eqCtx.moveTo(0, h/2); eqCtx.lineTo(w, h/2); eqCtx.stroke();
-            
             eqCtx.strokeStyle = '#00ffcc'; eqCtx.lineWidth = 2; eqCtx.beginPath();
             for (let x = 0; x < w; x+=2) { const y = dbToY(getEQResponse(xToFreq(x, w)), h); if (x === 0) eqCtx.moveTo(x, y); else eqCtx.lineTo(x, y); }
             eqCtx.stroke(); 
-            
             [ {id:'low', c:'#ff0055'}, {id:'mid', c:'#ffff00'}, {id:'high', c:'#00ccff'} ].forEach(p => {
                 const d = localEQ[p.id]; const x = freqToX(d.freq, w); const y = dbToY(d.gain, h);
                 eqCtx.fillStyle = p.c; eqCtx.beginPath(); eqCtx.arc(x, y, 6, 0, Math.PI*2); eqCtx.fill();
                 if(draggingPoint===p.id){ eqCtx.strokeStyle='#fff'; eqCtx.lineWidth=2; eqCtx.stroke(); }
             });
         }
-        
         function handleEQMove(cx, cy, isDown) {
             const r = eqCanvas.getBoundingClientRect(); const x = Math.max(0, Math.min(r.width, cx - r.left)); const y = Math.max(0, Math.min(r.height, cy - r.top));
             if (isDown) {
@@ -637,19 +709,13 @@
         eqCanvas.addEventListener('mousedown', e=>handleEQMove(e.clientX,e.clientY,true)); window.addEventListener('mousemove', e=>{if(draggingPoint)handleEQMove(e.clientX,e.clientY,false)}); window.addEventListener('mouseup', endEQDrag);
         eqCanvas.addEventListener('touchstart', e=>{e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,true)},{passive:false}); window.addEventListener('touchmove', e=>{if(draggingPoint){e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,false)}},{passive:false}); window.addEventListener('touchend', endEQDrag);
         
-        // --- Mixer & ADSR & Waveform ---
+        // --- Mixer & Waveform Helpers ---
         const volSynth=document.getElementById('vol-synth');
         let lastMixerSync = 0;
         const updateMixer=(v)=>{
-            localMixer=v; 
-            volSynth.value=v.synth; 
-            if(synth)synth.volume.value=v.synth; 
+            localMixer=v; volSynth.value=v.synth; if(synth)synth.volume.value=v.synth; 
         };
-        
-        volSynth.addEventListener('input',()=>{ 
-            updateMixer({synth:parseFloat(volSynth.value)}); 
-            if(Date.now()-lastMixerSync>30){socket.emit('update_mixer',localMixer);lastMixerSync=Date.now();} 
-        }); 
+        volSynth.addEventListener('input',()=>{ updateMixer({synth:parseFloat(volSynth.value)}); if(Date.now()-lastMixerSync>30){socket.emit('update_mixer',localMixer);lastMixerSync=Date.now();} }); 
         volSynth.addEventListener('change',()=>socket.emit('update_mixer',localMixer)); 
         volSynth.addEventListener('touchstart',ev=>ev.stopPropagation(),{passive:false}); 
         volSynth.addEventListener('mousedown',ev=>ev.stopPropagation());
@@ -664,60 +730,24 @@
             for(let i=0;i<WAVE_SIZE;i++){ const x=(i/(WAVE_SIZE-1))*w, y=c-(b[i]*(h/2)); if(i===0)waveCtx.moveTo(x,y); else waveCtx.lineTo(x,y); } 
             waveCtx.stroke(); waveCtx.lineTo(w,c); waveCtx.lineTo(0,c); waveCtx.fillStyle='rgba(0, 255, 204, 0.1)'; waveCtx.fill(); 
         }
-        
         let isDrawingWave=false;
         function updateWave(cx,cy){ 
             const r=waveCanvas.getBoundingClientRect(); const nx=Math.max(0,Math.min(1,(cx-r.left)/r.width)), ny=-((Math.max(0,Math.min(1,(cy-r.top)/r.height))*2)-1);
             const idx=Math.floor(nx*(WAVE_SIZE-1)); if(idx>=0&&idx<WAVE_SIZE) waveBuffer[idx]=ny; 
-            drawWave(waveBuffer); 
-            updateSynthWave(waveBuffer);
+            drawWave(waveBuffer); updateSynthWave(waveBuffer);
             if(Date.now() - lastWaveSync > 30) { socket.emit('update_waveform', waveBuffer); lastWaveSync = Date.now(); }
         }
-        
-        const handleWaveStart = e => { 
-            isDrawingWave = true; 
-            if(e.type === 'mousedown') handleWaveMove(e);
-            else if(e.type === 'touchstart') { e.preventDefault(); const t = e.touches[0]; updateWave(t.clientX, t.clientY); }
-        }; 
+        const handleWaveStart = e => { isDrawingWave = true; if(e.type === 'mousedown') handleWaveMove(e); else if(e.type === 'touchstart') { e.preventDefault(); const t = e.touches[0]; updateWave(t.clientX, t.clientY); } }; 
         const handleWaveEnd = () => { if(isDrawingWave){isDrawingWave=false; socket.emit('update_waveform',waveBuffer)} }; 
-        const handleWaveMove = e => { 
-            if(!isDrawingWave) return; 
-            e.preventDefault(); 
-            const t = e.touches ? e.touches[0] : e; updateWave(t.clientX, t.clientY); 
-        };
-        
+        const handleWaveMove = e => { if(!isDrawingWave) return; e.preventDefault(); const t = e.touches ? e.touches[0] : e; updateWave(t.clientX, t.clientY); };
         waveCanvas.addEventListener('mousedown', handleWaveStart); window.addEventListener('mouseup', handleWaveEnd); waveCanvas.addEventListener('mousemove', handleWaveMove);
         waveCanvas.addEventListener('touchstart', handleWaveStart, {passive: false}); window.addEventListener('touchend', handleWaveEnd); waveCanvas.addEventListener('touchmove', handleWaveMove, {passive: false});
-        
         resetBtn.addEventListener('click', e=>{e.stopPropagation(); waveBuffer=waveBuffer.map((_,i)=>Math.sin((i/WAVE_SIZE)*Math.PI*2)); drawWave(waveBuffer); updateSynthWave(waveBuffer); socket.emit('update_waveform',waveBuffer)});
         resetBtn.addEventListener('touchstart', e=>e.stopPropagation(),{passive:false});
 
-        function updateSynthWave(buffer) {
-            if(!synth) return;
-            const N = buffer.length; const numHarmonics = 32; const partials = [];
-            for (let k = 1; k <= numHarmonics; k++) {
-                let r = 0, i = 0;
-                for (let n = 0; n < N; n++) {
-                    const angle = (2 * Math.PI * k * n) / N;
-                    r += buffer[n] * Math.cos(angle);
-                    i += buffer[n] * Math.sin(angle);
-                }
-                partials.push(Math.sqrt(r * r + i * i));
-            }
-            const max = Math.max(...partials);
-            synth.set({oscillator:{partials:max>0.0001?partials.map(v=>v/max):partials}});
-        }
-
-        const adsrC=document.getElementById('adsr-canvas'), adsrCtx=adsrC.getContext('2d'), slA=document.getElementById('adsr-a'), slD=document.getElementById('adsr-d'), slS=document.getElementById('adsr-s'), slR=document.getElementById('adsr-r');
+        // ADSR UI Manual Sync
+        const slA=document.getElementById('adsr-a'), slD=document.getElementById('adsr-d'), slS=document.getElementById('adsr-s'), slR=document.getElementById('adsr-r');
         let lastAdsrSync = 0;
-        function drawADSRVisual(){ 
-            const w=adsrC.width, h=adsrC.height;
-            adsrCtx.clearRect(0,0,w,h); adsrCtx.fillStyle='rgba(0,0,0,0.3)'; adsrCtx.fillRect(0,0,w,h);
-            const A=parseFloat(slA.value), D=parseFloat(slD.value), S=parseFloat(slS.value), R=parseFloat(slR.value);
-            adsrCtx.beginPath(); adsrCtx.strokeStyle='#00ffcc'; adsrCtx.lineWidth=2;
-            const x1=(A/2)*(w*0.25), y2=h-(S*h), x2=x1+(D/2)*(w*0.25), x3=x2+(w*0.2), x4=Math.min(w,x3+(R/5)*(w*0.3));
-            adsrCtx.moveTo(0,h); adsrCtx.lineTo(x1,0); adsrCtx.lineTo(x2,y2); adsrCtx.lineTo(x3,y2); adsrCtx.lineTo(x4,h); adsrCtx.stroke();
-        }
         const updateADSR=()=>{ 
             localADSR={attack:parseFloat(slA.value),decay:parseFloat(slD.value),sustain:parseFloat(slS.value),release:parseFloat(slR.value)}; 
             drawADSRVisual(); if(synth)synth.set({envelope:localADSR}); 
@@ -731,48 +761,32 @@
             btn.addEventListener('touchstart', e=>e.stopPropagation(), {passive:false});
         });
 
-        // --- Swipe to Play ---
-        let isPointerDown = false;
-        let lastMoveNoteTime = 0;
-        const MOVE_NOTE_INTERVAL = 100;
-
+        // Swipe & Mouse Play
+        let isPointerDown = false; let lastMoveNoteTime = 0; const MOVE_NOTE_INTERVAL = 100;
         function triggerNoteFromInput(normX, normY) {
             if (normX < 0 || normX > 1 || normY < 0 || normY > 1) return;
-            const scaleNotes = SCALES[currentScaleName];
-            const noteIndex = Math.floor((1 - normY) * scaleNotes.length);
+            const scaleNotes = SCALES[currentScaleName]; const noteIndex = Math.floor((1 - normY) * scaleNotes.length);
             const note = scaleNotes[Math.min(noteIndex, scaleNotes.length - 1)];
             socket.emit('play_note', { note, duration: 0.5 + normX * 4.0, normX, normY });
         }
-
         function handleInput(e, isMove) {
             if (!isStarted) return;
             const target = e.target;
             if (['INPUT', 'BUTTON'].includes(target.tagName)) return;
             if (['wave-canvas','adsr-canvas','eq-canvas'].includes(target.id)) return;
-
             const cX = e.touches ? e.touches[0].clientX : e.clientX;
             const cY = e.touches ? e.touches[0].clientY : e.clientY;
-            
             const controlsRect = document.getElementById('controls').getBoundingClientRect();
             if (controlsRect.top <= cY) return;
-
             const w = window.innerWidth; const h = window.innerHeight;
             const centerX = w / 2; const centerY = (h / 2) - playAreaOffsetY;
             const normX = ((cX - centerX) / playAreaSize) + 0.5;
             const normY = ((cY - centerY) / playAreaSize) + 0.5;
-
             if (isMove) {
                 const now = Date.now();
-                if (now - lastMoveNoteTime > MOVE_NOTE_INTERVAL) {
-                    triggerNoteFromInput(normX, normY);
-                    lastMoveNoteTime = now;
-                }
-            } else {
-                triggerNoteFromInput(normX, normY);
-                lastMoveNoteTime = Date.now();
-            }
+                if (now - lastMoveNoteTime > MOVE_NOTE_INTERVAL) { triggerNoteFromInput(normX, normY); lastMoveNoteTime = now; }
+            } else { triggerNoteFromInput(normX, normY); lastMoveNoteTime = Date.now(); }
         }
-
         function onPointerDown(e) { isPointerDown = true; handleInput(e, false); }
         function onPointerMove(e) { 
             if (isPointerDown) {
@@ -782,50 +796,8 @@
             }
         }
         function onPointerUp() { isPointerDown = false; prevNotePos = null; }
-
         window.addEventListener('mousedown', onPointerDown); window.addEventListener('mousemove', onPointerMove); window.addEventListener('mouseup', onPointerUp);
         window.addEventListener('touchstart', onPointerDown, {passive: false}); window.addEventListener('touchmove', onPointerMove, {passive: false}); window.addEventListener('touchend', onPointerUp);
-
-        socket.on('trigger_note', (data) => {
-            if (!synth) return;
-            synth.triggerAttackRelease(data.note, data.duration);
-            const xPos = (data.normX - 0.5) * playAreaSize;
-            const yPos = -(data.normY - 0.5) * playAreaSize + playAreaOffsetY;
-            const pos = new THREE.Vector3(xPos, yPos, 0);
-
-            const isAuto = data.id === 'auto';
-            const color = isAuto ? 0xffaa00 : (data.id === socket.id ? 0x00ffcc : 0xff00cc);
-
-            const mesh = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.0, 64), new THREE.MeshBasicMaterial({ 
-                color: color, 
-                transparent: true, 
-                side: THREE.DoubleSide,
-                blending: THREE.AdditiveBlending 
-            }));
-            mesh.position.copy(pos);
-            scene.add(mesh);
-            visualObjects.push({ type: 'ring', mesh, startTime: Date.now(), duration: data.duration });
-
-            if (prevNotePos && !isAuto) {
-                const points = [prevNotePos.clone(), pos.clone()];
-                const geometry = new THREE.BufferGeometry().setFromPoints(points);
-                const material = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending });
-                const line = new THREE.Line(geometry, material);
-                scene.add(line);
-                visualObjects.push({ type: 'line', mesh: line, startTime: Date.now(), duration: data.duration * 2.0 }); 
-            }
-            if(!isAuto) prevNotePos = pos;
-        });
-
-        socket.on('sync_waveform', d => { waveBuffer=d; resizeCanvases(); updateSynthWave(d); });
-        socket.on('sync_adsr', d => { localADSR=d; slA.value=d.attack; slD.value=d.decay; slS.value=d.sustain; slR.value=d.release; resizeCanvases(); if(synth)synth.set({envelope:d}); });
-        socket.on('sync_mixer', d => updateMixer(d));
-        socket.on('sync_eq', d => { localEQ=d; resizeCanvases(); if(eqLow){ eqLow.frequency.value=d.low.freq; eqLow.gain.value=d.low.gain; eqMid.frequency.value=d.mid.freq; eqMid.gain.value=d.mid.gain; eqHigh.frequency.value=d.high.freq; eqHigh.gain.value=d.high.gain; } });
-        socket.on('sync_scale', (scaleName) => { currentScaleName = scaleName; scaleBtns.forEach(btn => { if(btn.dataset.scale === scaleName) btn.classList.add('active'); else btn.classList.remove('active'); }); });
-        socket.on('sync_auto', (data) => {
-            localAuto = data;
-            updateAutoUI();
-        });
     </script>
 </body>
 </html>
