@@ -63,16 +63,15 @@
             background: rgba(0,0,0,0.6); border: 1px solid #333; border-bottom: 2px solid #333;
             color: #00ffcc; font-size: 10px; padding: 6px 14px; cursor: pointer; border-radius: 2px;
             transition: all 0.1s; font-family: monospace; text-shadow: 0 0 5px rgba(0,255,204,0.3);
-            touch-action: manipulation; /* タップの遅延を防ぐ */
+            touch-action: manipulation;
         }
         button:hover { background: rgba(0, 255, 204, 0.1); border-color: #00ffcc; }
         button.active { background: #00ffcc; color: #000; border-color: #00ffcc; box-shadow: 0 0 15px rgba(0,255,204,0.6); text-shadow: none; font-weight: bold; }
 
-        /* スケールグリッドのスクロール修正 */
         .scale-grid { 
             display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; margin-top: 5px; height: 100%; 
             overflow-y: auto; align-content: start; 
-            touch-action: pan-y; /* 縦スクロールを許可 */
+            touch-action: pan-y; 
         }
         .scale-btn { 
             padding: 8px 4px; font-size: 9px; text-align: left; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
@@ -90,7 +89,6 @@
         }
         #overlay span { margin-top: 15px; font-size: 10px; color: #888; letter-spacing: 1px; }
 
-        /* センサーボタン */
         #sensor-btn {
             position: fixed; top: 20px; right: 20px; z-index: 100;
             background: rgba(0,0,0,0.5); border: 1px solid #444; color: #888;
@@ -99,48 +97,26 @@
         }
         #sensor-btn.active { border-color: #00ffcc; color: #00ffcc; background: rgba(0,255,204,0.1); }
 
-        /* センサービジュアライザー */
         #sensor-panel {
             position: fixed; top: 60px; right: 20px; z-index: 90;
             display: flex; gap: 12px;
         }
-        .sensor-group {
-            display: flex; flex-direction: column; align-items: center; gap: 5px;
-        }
+        .sensor-group { display: flex; flex-direction: column; align-items: center; gap: 5px; }
         .sensor-meter {
-            width: 10px; height: 80px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 4px;
-            position: relative;
-            overflow: hidden;
-            display: flex; flex-direction: column-reverse;
-            border: 1px solid #333;
+            width: 10px; height: 80px; background: rgba(255,255,255,0.1);
+            border-radius: 4px; position: relative; overflow: hidden;
+            display: flex; flex-direction: column-reverse; border: 1px solid #333;
         }
-        .sensor-fill {
-            width: 100%; height: 0%;
-            background: #00ffcc;
-            box-shadow: 0 0 10px #00ffcc;
-        }
+        .sensor-fill { width: 100%; height: 0%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc; }
         .target-btn {
             font-size: 9px; color: #00ffcc; background: rgba(0,0,0,0.6);
             border: 1px solid #444; padding: 4px; width: 45px;
-            text-align: center; cursor: pointer; border-radius: 4px;
-            white-space: nowrap;
+            text-align: center; cursor: pointer; border-radius: 4px; white-space: nowrap;
         }
-        .target-btn:hover { border-color: #00ffcc; }
 
-        /* バージョン表示 */
         #version-display {
             position: fixed; bottom: 5px; right: 5px;
-            font-size: 9px; color: #444; z-index: 9999; pointer-events: none;
-            font-family: sans-serif;
-        }
-
-        @media (min-width: 1100px) { #controls { justify-content: center; gap: 20px; } }
-        @media (max-width: 1099px) { 
-            #controls { justify-content: flex-start; overflow-x: auto; padding: 10px 20px 30px 20px; scroll-snap-type: x mandatory; } 
-            #controls::-webkit-scrollbar { display: none; } 
-            .panel-section { scroll-snap-align: center; margin-right: 5px; } 
+            font-size: 9px; color: #444; z-index: 9999; pointer-events: none; font-family: sans-serif;
         }
     </style>
     <script src="/socket.io/socket.io.js"></script>
@@ -154,7 +130,7 @@
         <span>PLAY INSIDE THE SQUARE</span>
     </div>
 
-    <div id="version-display">v1.3 - SYNC FIX & SCALE FIX</div>
+    <div id="version-display">v1.4 - FULL SYNC FIX</div>
 
     <button id="sensor-btn">SENSOR: OFF</button>
     
@@ -231,10 +207,10 @@
         let synth, limiter, chorus, reverb, fft, panner; 
         let eqLow, eqMid, eqHigh, globalFilter; 
 
+        // --- Layout ---
         let playAreaSize = 0;
         let playAreaMesh;
         let playAreaOffsetY = 0; 
-        
         let prevNotePos = null;
 
         // --- Visuals ---
@@ -254,19 +230,12 @@
         let meterCurrentVal = { x: 0, y: 0 };
 
         const cursorGeo = new THREE.OctahedronGeometry(1, 0); 
-        const cursorMat = new THREE.MeshBasicMaterial({ 
-            color: 0x00ffcc, 
-            wireframe: true, 
-            transparent: true, 
-            opacity: 0.6 
-        });
+        const cursorMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.6 });
         sensorCursor = new THREE.Mesh(cursorGeo, cursorMat);
         scene.add(sensorCursor);
 
-
         function updateLayout() {
-            const w = window.innerWidth;
-            const h = window.innerHeight;
+            const w = window.innerWidth; const h = window.innerHeight;
             const controlsEl = document.getElementById('controls');
             const controlsHeight = controlsEl ? controlsEl.offsetHeight : 0;
             const availableHeight = h - controlsHeight;
@@ -288,7 +257,6 @@
                 sensorCursor.scale.set(s, s, s);
                 sensorCursor.position.y = playAreaOffsetY + cursorTargetPos.y; 
             }
-
             resizeCanvases();
         }
         function resizeCanvases() {
@@ -310,10 +278,8 @@
             if(isStarted) drawEQ();
 
             const lerpFactor = 0.2;
-            
             if(sensorCursor) {
-                sensorCursor.rotation.x += 0.01;
-                sensorCursor.rotation.y += 0.015;
+                sensorCursor.rotation.x += 0.01; sensorCursor.rotation.y += 0.015;
                 const targetY = cursorTargetPos.y + playAreaOffsetY;
                 sensorCursor.position.x += (cursorTargetPos.x - sensorCursor.position.x) * lerpFactor;
                 sensorCursor.position.y += (targetY - sensorCursor.position.y) * lerpFactor;
@@ -322,13 +288,8 @@
             meterCurrentVal.x += (meterTargetVal.x - meterCurrentVal.x) * lerpFactor;
             meterCurrentVal.y += (meterTargetVal.y - meterCurrentVal.y) * lerpFactor;
             
-            if(Math.abs(meterTargetVal.x - meterCurrentVal.x) > 0.001) {
-                fillX.style.height = (meterCurrentVal.x * 100) + "%";
-            }
-            if(Math.abs(meterTargetVal.y - meterCurrentVal.y) > 0.001) {
-                fillY.style.height = (meterCurrentVal.y * 100) + "%";
-            }
-
+            if(Math.abs(meterTargetVal.x - meterCurrentVal.x) > 0.001) fillX.style.height = (meterCurrentVal.x * 100) + "%";
+            if(Math.abs(meterTargetVal.y - meterCurrentVal.y) > 0.001) fillY.style.height = (meterCurrentVal.y * 100) + "%";
 
             const now = Date.now();
             for (let i = visualObjects.length - 1; i >= 0; i--) {
@@ -342,21 +303,21 @@
                         const scale = (playAreaSize * 0.02) + (progress * playAreaSize * 0.4);
                         obj.mesh.scale.set(scale, scale, 1);
                         obj.mesh.material.opacity = (1 - Math.pow(progress, 2)) * 0.3;
-                    } else if (obj.type === 'line') {
-                        obj.mesh.material.opacity = (1 - progress) * 0.2;
-                    }
+                    } else if (obj.type === 'line') obj.mesh.material.opacity = (1 - progress) * 0.2;
                 }
             }
             renderer.render(scene, camera);
         }
         animate();
 
-        // --- Audio ---
+        // --- Audio & State ---
         let localADSR = { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1.5 };
         let localMixer = { synth: -4 };
         let localEQ = { low: {freq:100, gain:4}, mid: {freq:1000, gain:-2}, high: {freq:5000, gain:-6} };
-        
         let localAuto = { active: false, speed: 30 };
+        
+        const WAVE_SIZE=128; 
+        let waveBuffer=new Array(WAVE_SIZE).fill(0).map((_,i)=>Math.sin((i/WAVE_SIZE)*Math.PI*2));
 
         const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
         function generateScale(intervals) {
@@ -373,7 +334,7 @@
         }
 
         const SCALE_DEFINITIONS = {
-            "MYSTERIOUS":       [0, 2, 3, 6, 7, 8, 11], // ★ ハンガリアンマイナーなど、サーバーのデフォルト定義
+            "MYSTERIOUS":       [0, 2, 3, 6, 7, 8, 11],
             "MINOR_PENTATONIC": [0, 3, 5, 7, 10], 
             "MAJOR":            [0, 2, 4, 5, 7, 9, 11],
             "MINOR":            [0, 2, 3, 5, 7, 8, 10],
@@ -389,44 +350,33 @@
             SCALES[name] = generateScale(intervals);
         }
         
-        let currentScaleName = "MYSTERIOUS"; // 初期値をサーバーと合わせる
+        let currentScaleName = "MYSTERIOUS"; 
 
         async function initAudio() {
             if (isStarted) return;
             await Tone.start();
             
-            fft = new Tone.Analyser("fft", 256);
-            fft.smoothing = 0.85;
-
-            limiter = new Tone.Limiter(-1).connect(fft);
-            fft.toDestination(); 
+            fft = new Tone.Analyser("fft", 256); fft.smoothing = 0.85;
+            limiter = new Tone.Limiter(-1).connect(fft); fft.toDestination(); 
 
             chorus = new Tone.Chorus(4, 2.5, 0.5);
             reverb = new Tone.Reverb({ decay: 5, wet: 0.5 }); 
             globalFilter = new Tone.Filter(4000, "lowpass", -12);
             panner = new Tone.Panner(0);
 
-            // ローカルに保存されている最新のEQ設定で初期化
+            // Apply Current State to Tone.js Nodes
             eqLow = new Tone.Filter({ type: "lowshelf", frequency: localEQ.low.freq, gain: localEQ.low.gain, rolloff: -12 });
             eqMid = new Tone.Filter({ type: "peaking", frequency: localEQ.mid.freq, gain: localEQ.mid.gain, Q: 2.5 });
             eqHigh = new Tone.Filter({ type: "highshelf", frequency: localEQ.high.freq, gain: localEQ.high.gain, rolloff: -12 });
             
-            reverb.connect(limiter); 
-            chorus.connect(reverb);
-            globalFilter.connect(chorus);
-            eqHigh.connect(globalFilter); 
-            eqMid.connect(eqHigh); 
-            eqLow.connect(eqMid);
+            reverb.connect(limiter); chorus.connect(reverb);
+            globalFilter.connect(chorus); eqHigh.connect(globalFilter); eqMid.connect(eqHigh); eqLow.connect(eqMid);
             panner.connect(eqLow);
 
             synth = new Tone.PolySynth(Tone.Synth, {
-                maxPolyphony: 20, 
-                volume: localMixer.synth, 
-                oscillator: { type: "triangle" },
-                envelope: localADSR
+                maxPolyphony: 20, volume: localMixer.synth, oscillator: { type: "triangle" }, envelope: localADSR
             }).connect(panner); 
 
-            // ローカルに保存されている最新の波形で初期化
             updateSynthWave(waveBuffer);
 
             isStarted = true;
@@ -435,65 +385,45 @@
         }
         document.getElementById('overlay').addEventListener('click', initAudio);
 
-        // --- Sensor Logic & Sync & Mapping ---
+        // --- UI Element References ---
+        const slA=document.getElementById('adsr-a'), slD=document.getElementById('adsr-d'), slS=document.getElementById('adsr-s'), slR=document.getElementById('adsr-r');
+        const volSynth=document.getElementById('vol-synth');
+        const autoBtn = document.getElementById('auto-btn');
+        const autoSpeed = document.getElementById('auto-speed');
+        const scaleBtns = document.querySelectorAll('.scale-btn');
         const sensorBtn = document.getElementById('sensor-btn');
-        const fillX = document.getElementById('fill-x');
-        const fillY = document.getElementById('fill-y');
-        const targetXBtn = document.getElementById('target-x-btn');
-        const targetYBtn = document.getElementById('target-y-btn');
+        const fillX = document.getElementById('fill-x'), fillY = document.getElementById('fill-y');
+        const targetXBtn = document.getElementById('target-x-btn'), targetYBtn = document.getElementById('target-y-btn');
+        const waveCanvas=document.getElementById('wave-canvas'), waveCtx=waveCanvas.getContext('2d'), resetBtn=document.getElementById('reset-btn');
+        const adsrC=document.getElementById('adsr-canvas'), adsrCtx=adsrC.getContext('2d');
 
-        let isSensorActive = false;
-        let lastSensorSync = 0;
-        
-        const TARGETS_X = ['FILTER', 'PAN', 'VOL'];
-        const TARGETS_Y = ['REVERB', 'DECAY', 'RELEASE'];
+        // --- Sensor ---
+        let isSensorActive = false; let lastSensorSync = 0;
+        const TARGETS_X = ['FILTER', 'PAN', 'VOL']; const TARGETS_Y = ['REVERB', 'DECAY', 'RELEASE'];
         let myTargets = { x: 'FILTER', y: 'REVERB' };
-
         let currentParamsValue = {};
 
-        // ★ 音声だけでなくUIも更新する関数 (全員共有)
         function applyAudioParam(target, val) {
             currentParamsValue[target] = val; 
-            
             if (target === myTargets.x) cursorTargetPos.x = (val - 0.5) * playAreaSize;
             if (target === myTargets.y) cursorTargetPos.y = (val - 0.5) * playAreaSize;
 
             if (!synth) return;
 
-            if (target === 'FILTER') {
-                const freq = 100 * Math.pow(80, val); 
-                if(globalFilter) globalFilter.frequency.rampTo(freq, 0.1);
+            if (target === 'FILTER') { const freq = 100 * Math.pow(80, val); if(globalFilter) globalFilter.frequency.rampTo(freq, 0.1); } 
+            else if (target === 'PAN') { const panVal = (val * 2) - 1; if(panner) panner.pan.rampTo(panVal, 0.1); } 
+            else if (target === 'VOL') { 
+                const vol = (val * 60) - 60; synth.volume.rampTo(vol, 0.1); 
+                volSynth.value = vol; // UI Sync
             } 
-            else if (target === 'PAN') {
-                const panVal = (val * 2) - 1;
-                if(panner) panner.pan.rampTo(panVal, 0.1);
+            else if (target === 'REVERB') { if(reverb) reverb.wet.rampTo(val, 0.1); } 
+            else if (target === 'DECAY') { 
+                const d = 0.1 + (val * 1.9); synth.set({ envelope: { decay: d } }); 
+                slD.value = d; drawADSRVisual(); // UI Sync
             } 
-            else if (target === 'VOL') {
-                const vol = (val * 60) - 60;
-                synth.volume.rampTo(vol, 0.1);
-                const volSlider = document.getElementById('vol-synth');
-                if(volSlider) volSlider.value = vol;
-            } 
-            else if (target === 'REVERB') {
-                if(reverb) reverb.wet.rampTo(val, 0.1);
-            } 
-            else if (target === 'DECAY') {
-                const d = 0.1 + (val * 1.9);
-                synth.set({ envelope: { decay: d } });
-                const dSlider = document.getElementById('adsr-d');
-                if(dSlider) {
-                    dSlider.value = d;
-                    drawADSRVisual(); 
-                }
-            } 
-            else if (target === 'RELEASE') {
-                const r = 0.1 + (val * 4.9);
-                synth.set({ envelope: { release: r } });
-                const rSlider = document.getElementById('adsr-r');
-                if(rSlider) {
-                    rSlider.value = r;
-                    drawADSRVisual(); 
-                }
+            else if (target === 'RELEASE') { 
+                const r = 0.1 + (val * 4.9); synth.set({ envelope: { release: r } }); 
+                slR.value = r; drawADSRVisual(); // UI Sync
             }
         }
 
@@ -504,22 +434,12 @@
 
         function handleSensor(e) {
             if (!isStarted || !isSensorActive) return;
-            
-            const gamma = e.gamma || 0; 
-            const normGamma = Math.max(-1, Math.min(1, gamma / 45)); 
-            const valX = (normGamma + 1) / 2; 
+            const gamma = e.gamma || 0; const normGamma = Math.max(-1, Math.min(1, gamma / 45)); const valX = (normGamma + 1) / 2; 
+            const beta = e.beta || 0; const normBeta = Math.max(-1, Math.min(1, (beta - 45) / 45)); const valY = (1.0 - ((normBeta + 1) / 2)); 
 
-            const beta = e.beta || 0; 
-            const normBeta = Math.max(-1, Math.min(1, (beta - 45) / 45));
-            const valY = (1.0 - ((normBeta + 1) / 2)); 
+            applyAudioParam(myTargets.x, valX); applyAudioParam(myTargets.y, valY);
+            updateSensorVisuals(myTargets.x, valX); updateSensorVisuals(myTargets.y, valY);
 
-            // 即時反映
-            applyAudioParam(myTargets.x, valX);
-            applyAudioParam(myTargets.y, valY);
-            updateSensorVisuals(myTargets.x, valX);
-            updateSensorVisuals(myTargets.y, valY);
-
-            // 送信
             const now = Date.now();
             if (now - lastSensorSync > 100) {
                 socket.emit('update_param', { target: myTargets.x, value: valX });
@@ -528,113 +448,146 @@
             }
         }
 
-        function syncCursorToCurrentTarget() {
-            if (currentParamsValue[myTargets.x] !== undefined) {
-                cursorTargetPos.x = (currentParamsValue[myTargets.x] - 0.5) * playAreaSize;
-            }
-            if (currentParamsValue[myTargets.y] !== undefined) {
-                cursorTargetPos.y = (currentParamsValue[myTargets.y] - 0.5) * playAreaSize;
-            }
-        }
-
-        targetXBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const idx = TARGETS_X.indexOf(myTargets.x);
-            myTargets.x = TARGETS_X[(idx + 1) % TARGETS_X.length];
+        targetXBtn.addEventListener('click', (e) => { e.stopPropagation();
+            const idx = TARGETS_X.indexOf(myTargets.x); myTargets.x = TARGETS_X[(idx + 1) % TARGETS_X.length];
             targetXBtn.textContent = myTargets.x;
-            syncCursorToCurrentTarget(); 
         });
-        targetXBtn.addEventListener('touchstart', e=>e.stopPropagation(),{passive:false});
-
-        targetYBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const idx = TARGETS_Y.indexOf(myTargets.y);
-            myTargets.y = TARGETS_Y[(idx + 1) % TARGETS_Y.length];
+        targetYBtn.addEventListener('click', (e) => { e.stopPropagation();
+            const idx = TARGETS_Y.indexOf(myTargets.y); myTargets.y = TARGETS_Y[(idx + 1) % TARGETS_Y.length];
             targetYBtn.textContent = myTargets.y;
-            syncCursorToCurrentTarget(); 
         });
-        targetYBtn.addEventListener('touchstart', e=>e.stopPropagation(),{passive:false});
 
-        sensorBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
+        sensorBtn.addEventListener('click', async (e) => { e.stopPropagation();
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                try {
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission === 'granted') toggleSensor();
-                    else alert("Permission denied");
-                } catch (err) { console.error(err); }
-            } else {
-                toggleSensor();
-            }
+                try { const permission = await DeviceOrientationEvent.requestPermission(); if (permission === 'granted') toggleSensor(); else alert("Permission denied"); } catch (err) { console.error(err); }
+            } else { toggleSensor(); }
         });
-        
         function toggleSensor() {
             isSensorActive = !isSensorActive;
-            if (isSensorActive) {
-                sensorBtn.textContent = "SENSOR: ON";
-                sensorBtn.classList.add("active");
-                window.addEventListener('deviceorientation', handleSensor);
-            } else {
-                sensorBtn.textContent = "SENSOR: OFF";
-                sensorBtn.classList.remove("active");
-                window.removeEventListener('deviceorientation', handleSensor);
-            }
+            if (isSensorActive) { sensorBtn.textContent = "SENSOR: ON"; sensorBtn.classList.add("active"); window.addEventListener('deviceorientation', handleSensor); } 
+            else { sensorBtn.textContent = "SENSOR: OFF"; sensorBtn.classList.remove("active"); window.removeEventListener('deviceorientation', handleSensor); }
         }
 
-        // --- 受信イベント (全員同期) ---
-        // ★ 修正点: synthが存在しなくてもデータは必ず更新する
-        
+        // --- Server Sync Handlers (Fixing the "Nothing is syncing" issue) ---
+        // UI must update immediately when data arrives.
+
         socket.on('sync_all_params', (params) => {
-            for (const [key, val] of Object.entries(params)) {
-                applyAudioParam(key, val);
-                updateSensorVisuals(key, val);
-            }
+            for (const [key, val] of Object.entries(params)) { applyAudioParam(key, val); updateSensorVisuals(key, val); }
+        });
+        socket.on('sync_param', (data) => { applyAudioParam(data.target, data.value); updateSensorVisuals(data.target, data.value); });
+
+        socket.on('sync_waveform', d => { 
+            waveBuffer = d; 
+            drawWave(waveBuffer); // UI
+            if(synth) updateSynthWave(d); // Audio
         });
 
-        socket.on('sync_param', (data) => {
-            applyAudioParam(data.target, data.value);
-            updateSensorVisuals(data.target, data.value);
+        socket.on('sync_adsr', d => { 
+            localADSR = d; 
+            // UI Update (Important for sync)
+            slA.value=d.attack; slD.value=d.decay; slS.value=d.sustain; slR.value=d.release; 
+            drawADSRVisual(); 
+            if(synth) synth.set({envelope:d}); 
         });
 
-        // --- Auto Play UI ---
-        const autoBtn = document.getElementById('auto-btn');
-        const autoSpeed = document.getElementById('auto-speed');
-        let lastAutoSync = 0;
+        socket.on('sync_mixer', d => {
+            localMixer = d;
+            volSynth.value = d.synth; // UI Update
+            if(synth) synth.volume.value = d.synth;
+        });
 
-        function updateAutoUI() {
-            if(localAuto.active) {
-                autoBtn.textContent = "AUTO: ON";
-                autoBtn.classList.add("active");
-            } else {
-                autoBtn.textContent = "AUTO: OFF";
-                autoBtn.classList.remove("active");
-            }
+        socket.on('sync_eq', d => { 
+            localEQ = d; 
+            // Canvas handles visual update in loop, but we force redraw
+            if(eqLow){ eqLow.frequency.value=d.low.freq; eqLow.gain.value=d.low.gain; eqMid.frequency.value=d.mid.freq; eqMid.gain.value=d.mid.gain; eqHigh.frequency.value=d.high.freq; eqHigh.gain.value=d.high.gain; } 
+        });
+
+        socket.on('sync_scale', (scaleName) => { 
+            currentScaleName = scaleName; 
+            // UI Highlight Sync
+            scaleBtns.forEach(btn => { 
+                if(btn.dataset.scale === scaleName) btn.classList.add('active'); 
+                else btn.classList.remove('active'); 
+            }); 
+        });
+
+        socket.on('sync_auto', (data) => {
+            localAuto = data;
+            // UI Sync
+            if(localAuto.active) { autoBtn.textContent = "AUTO: ON"; autoBtn.classList.add("active"); } 
+            else { autoBtn.textContent = "AUTO: OFF"; autoBtn.classList.remove("active"); }
             autoSpeed.value = localAuto.speed;
+        });
+
+
+        // --- UI Event Listeners (Emit Logic) ---
+
+        // Auto
+        let lastAutoSync = 0;
+        autoBtn.addEventListener('click', (e) => { e.stopPropagation(); localAuto.active = !localAuto.active; socket.emit('update_auto', localAuto); });
+        autoSpeed.addEventListener('input', () => { localAuto.speed = parseInt(autoSpeed.value); if(Date.now() - lastAutoSync > 100) { socket.emit('update_auto', localAuto); lastAutoSync = Date.now(); } });
+
+        // Mixer
+        let lastMixerSync = 0;
+        volSynth.addEventListener('input',()=>{ 
+            localMixer.synth = parseFloat(volSynth.value);
+            if(synth) synth.volume.value = localMixer.synth;
+            if(Date.now()-lastMixerSync>30){socket.emit('update_mixer',localMixer);lastMixerSync=Date.now();} 
+        });
+        
+        // ADSR
+        let lastAdsrSync = 0;
+        const updateADSR=()=>{ 
+            localADSR={attack:parseFloat(slA.value),decay:parseFloat(slD.value),sustain:parseFloat(slS.value),release:parseFloat(slR.value)}; 
+            drawADSRVisual(); if(synth)synth.set({envelope:localADSR}); 
+            if(Date.now() - lastAdsrSync > 30) { socket.emit('update_adsr',localADSR); lastAdsrSync = Date.now(); }
+        };
+        [slA,slD,slS,slR].forEach(s=>{ s.addEventListener('input',updateADSR); s.addEventListener('touchstart',e=>e.stopPropagation(),{passive:false}); });
+
+        // Waveform
+        let lastWaveSync = 0; let isDrawingWave=false;
+        function drawWave(b){ 
+            const w=waveCanvas.width, h=waveCanvas.height, c=h/2;
+            waveCtx.clearRect(0,0,w,h); waveCtx.strokeStyle='#333'; waveCtx.beginPath(); waveCtx.moveTo(0,c); waveCtx.lineTo(w,c); waveCtx.stroke(); 
+            waveCtx.beginPath(); waveCtx.strokeStyle='#00ffcc'; waveCtx.lineWidth=2; 
+            for(let i=0;i<WAVE_SIZE;i++){ const x=(i/(WAVE_SIZE-1))*w, y=c-(b[i]*(h/2)); if(i===0)waveCtx.moveTo(x,y); else waveCtx.lineTo(x,y); } 
+            waveCtx.stroke(); waveCtx.lineTo(w,c); waveCtx.lineTo(0,c); waveCtx.fillStyle='rgba(0, 255, 204, 0.1)'; waveCtx.fill(); 
+        }
+        function updateWave(cx,cy){ 
+            const r=waveCanvas.getBoundingClientRect(); const nx=Math.max(0,Math.min(1,(cx-r.left)/r.width)), ny=-((Math.max(0,Math.min(1,(cy-r.top)/r.height))*2)-1);
+            const idx=Math.floor(nx*(WAVE_SIZE-1)); if(idx>=0&&idx<WAVE_SIZE) waveBuffer[idx]=ny; 
+            drawWave(waveBuffer); updateSynthWave(waveBuffer);
+            if(Date.now() - lastWaveSync > 30) { socket.emit('update_waveform', waveBuffer); lastWaveSync = Date.now(); }
+        }
+        function updateSynthWave(buffer) {
+            if(!synth) return;
+            const N = buffer.length; const numHarmonics = 32; const partials = [];
+            for (let k = 1; k <= numHarmonics; k++) {
+                let r = 0, i = 0;
+                for (let n = 0; n < N; n++) {
+                    const angle = (2 * Math.PI * k * n) / N; r += buffer[n] * Math.cos(angle); i += buffer[n] * Math.sin(angle);
+                }
+                partials.push(Math.sqrt(r * r + i * i));
+            }
+            const max = Math.max(...partials); synth.set({oscillator:{partials:max>0.0001?partials.map(v=>v/max):partials}});
+        }
+        const handleWaveStart = e => { isDrawingWave = true; if(e.type === 'mousedown') handleWaveMove(e); else if(e.type === 'touchstart') { e.preventDefault(); updateWave(e.touches[0].clientX, e.touches[0].clientY); } }; 
+        const handleWaveEnd = () => { if(isDrawingWave){isDrawingWave=false; socket.emit('update_waveform',waveBuffer)} }; 
+        const handleWaveMove = e => { if(!isDrawingWave) return; e.preventDefault(); const t = e.touches ? e.touches[0] : e; updateWave(t.clientX, t.clientY); };
+        waveCanvas.addEventListener('mousedown', handleWaveStart); window.addEventListener('mouseup', handleWaveEnd); waveCanvas.addEventListener('mousemove', handleWaveMove);
+        waveCanvas.addEventListener('touchstart', handleWaveStart, {passive: false}); window.addEventListener('touchend', handleWaveEnd); waveCanvas.addEventListener('touchmove', handleWaveMove, {passive: false});
+        resetBtn.addEventListener('click', e=>{e.stopPropagation(); waveBuffer=waveBuffer.map((_,i)=>Math.sin((i/WAVE_SIZE)*Math.PI*2)); drawWave(waveBuffer); updateSynthWave(waveBuffer); socket.emit('update_waveform',waveBuffer)});
+
+        // ADSR Visual
+        function drawADSRVisual(){ 
+            const w=adsrC.width, h=adsrC.height; adsrCtx.clearRect(0,0,w,h); adsrCtx.fillStyle='rgba(0,0,0,0.3)'; adsrCtx.fillRect(0,0,w,h);
+            const A=parseFloat(slA.value), D=parseFloat(slD.value), S=parseFloat(slS.value), R=parseFloat(slR.value);
+            adsrCtx.beginPath(); adsrCtx.strokeStyle='#00ffcc'; adsrCtx.lineWidth=2;
+            const x1=(A/2)*(w*0.25), y2=h-(S*h), x2=x1+(D/2)*(w*0.25), x3=x2+(w*0.2), x4=Math.min(w,x3+(R/5)*(w*0.3));
+            adsrCtx.moveTo(0,h); adsrCtx.lineTo(x1,0); adsrCtx.lineTo(x2,y2); adsrCtx.lineTo(x3,y2); adsrCtx.lineTo(x4,h); adsrCtx.stroke();
         }
 
-        autoBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            localAuto.active = !localAuto.active;
-            socket.emit('update_auto', localAuto);
-            updateAutoUI();
-        });
-        autoBtn.addEventListener('touchstart', (e) => e.stopPropagation(), {passive: false});
-
-        autoSpeed.addEventListener('input', () => {
-            localAuto.speed = parseInt(autoSpeed.value);
-            if(Date.now() - lastAutoSync > 100) { 
-                socket.emit('update_auto', localAuto);
-                lastAutoSync = Date.now();
-            }
-        });
-        autoSpeed.addEventListener('change', () => {
-            socket.emit('update_auto', localAuto);
-        });
-        autoSpeed.addEventListener('touchstart', (e) => e.stopPropagation(), {passive: false});
-        autoSpeed.addEventListener('mousedown', (e) => e.stopPropagation());
-
-
-        // --- EQ & Spectrum ---
+        // EQ Logic
         const eqCanvas = document.getElementById('eq-canvas'); const eqCtx = eqCanvas.getContext('2d'); const eqReadout = document.getElementById('eq-readout');
         const minFreq = 20; const maxFreq = 20000;
         function xToFreq(x, width) { return minFreq * Math.pow(maxFreq / minFreq, x / width); }
@@ -648,52 +601,31 @@
             if (localEQ.mid.gain !== 0) { const Q=2.5; db += localEQ.mid.gain * Math.exp( -Math.pow( (Math.log(f/localEQ.mid.freq)) * Q, 2 ) ); }
             return db;
         }
-        let draggingPoint = null;
-        let lastEqSyncTime = 0;
-        
+        let draggingPoint = null; let lastEqSyncTime = 0;
         function drawEQ() {
-            const w = eqCanvas.width; const h = eqCanvas.height; 
-            eqCtx.clearRect(0, 0, w, h);
-
+            const w = eqCanvas.width; const h = eqCanvas.height; eqCtx.clearRect(0, 0, w, h);
             if (fft) {
-                const values = fft.getValue(); 
-                const nyquist = Tone.context.sampleRate / 2;
-                const fftSize = values.length;
-                
-                eqCtx.fillStyle = 'rgba(0, 255, 204, 0.15)'; 
-                eqCtx.beginPath();
-                eqCtx.moveTo(0, h);
-
+                const values = fft.getValue(); const nyquist = Tone.context.sampleRate / 2; const fftSize = values.length;
+                eqCtx.fillStyle = 'rgba(0, 255, 204, 0.15)'; eqCtx.beginPath(); eqCtx.moveTo(0, h);
                 for (let i = 0; i < fftSize; i++) {
-                    const db = values[i];
-                    if (db === -Infinity) continue;
-                    const freq = i * (nyquist / fftSize);
-                    const x = freqToX(freq, w);
-                    if (x < 0) continue; 
-                    if (x > w) break; 
-                    const barHeight = Math.max(0, (db + 100) / 100 * h);
-                    const y = h - barHeight;
-                    eqCtx.lineTo(x, y);
+                    const db = values[i]; if (db === -Infinity) continue;
+                    const freq = i * (nyquist / fftSize); const x = freqToX(freq, w); if (x < 0) continue; if (x > w) break; 
+                    const barHeight = Math.max(0, (db + 100) / 100 * h); eqCtx.lineTo(x, h - barHeight);
                 }
-                eqCtx.lineTo(w, h);
-                eqCtx.fill();
+                eqCtx.lineTo(w, h); eqCtx.fill();
             }
-
             eqCtx.strokeStyle = 'rgba(255,255,255,0.1)'; eqCtx.lineWidth = 1; eqCtx.beginPath();
             [100, 1000, 10000].forEach(f => { const x = freqToX(f, w); eqCtx.moveTo(x, 0); eqCtx.lineTo(x, h); });
             eqCtx.moveTo(0, h/2); eqCtx.lineTo(w, h/2); eqCtx.stroke();
-            
             eqCtx.strokeStyle = '#00ffcc'; eqCtx.lineWidth = 2; eqCtx.beginPath();
             for (let x = 0; x < w; x+=2) { const y = dbToY(getEQResponse(xToFreq(x, w)), h); if (x === 0) eqCtx.moveTo(x, y); else eqCtx.lineTo(x, y); }
             eqCtx.stroke(); 
-            
             [ {id:'low', c:'#ff0055'}, {id:'mid', c:'#ffff00'}, {id:'high', c:'#00ccff'} ].forEach(p => {
                 const d = localEQ[p.id]; const x = freqToX(d.freq, w); const y = dbToY(d.gain, h);
                 eqCtx.fillStyle = p.c; eqCtx.beginPath(); eqCtx.arc(x, y, 6, 0, Math.PI*2); eqCtx.fill();
                 if(draggingPoint===p.id){ eqCtx.strokeStyle='#fff'; eqCtx.lineWidth=2; eqCtx.stroke(); }
             });
         }
-        
         function handleEQMove(cx, cy, isDown) {
             const r = eqCanvas.getBoundingClientRect(); const x = Math.max(0, Math.min(r.width, cx - r.left)); const y = Math.max(0, Math.min(r.height, cy - r.top));
             if (isDown) {
@@ -712,239 +644,75 @@
                 if (Date.now() - lastEqSyncTime > 30) { socket.emit('update_eq', localEQ); lastEqSyncTime = Date.now(); }
             }
         }
-        function endEQDrag() { if(draggingPoint){ socket.emit('update_eq', localEQ); draggingPoint=null; eqReadout.textContent="DRAG POINTS"; }}
+        const endEQDrag = () => { if(draggingPoint){ socket.emit('update_eq', localEQ); draggingPoint=null; eqReadout.textContent="DRAG POINTS"; }};
         eqCanvas.addEventListener('mousedown', e=>handleEQMove(e.clientX,e.clientY,true)); window.addEventListener('mousemove', e=>{if(draggingPoint)handleEQMove(e.clientX,e.clientY,false)}); window.addEventListener('mouseup', endEQDrag);
         eqCanvas.addEventListener('touchstart', e=>{e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,true)},{passive:false}); window.addEventListener('touchmove', e=>{if(draggingPoint){e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,false)}},{passive:false}); window.addEventListener('touchend', endEQDrag);
-        
-        // --- Mixer & ADSR & Waveform ---
-        const volSynth=document.getElementById('vol-synth');
-        let lastMixerSync = 0;
-        const updateMixer=(v)=>{
-            localMixer=v; 
-            volSynth.value=v.synth; 
-            if(synth)synth.volume.value=v.synth; 
-        };
-        
-        volSynth.addEventListener('input',()=>{ 
-            updateMixer({synth:parseFloat(volSynth.value)}); 
-            if(Date.now()-lastMixerSync>30){socket.emit('update_mixer',localMixer);lastMixerSync=Date.now();} 
-        }); 
-        volSynth.addEventListener('change',()=>socket.emit('update_mixer',localMixer)); 
-        volSynth.addEventListener('touchstart',ev=>ev.stopPropagation(),{passive:false}); 
-        volSynth.addEventListener('mousedown',ev=>ev.stopPropagation());
 
-        const waveCanvas=document.getElementById('wave-canvas'), waveCtx=waveCanvas.getContext('2d'), resetBtn=document.getElementById('reset-btn');
-        const WAVE_SIZE=128; let waveBuffer=new Array(WAVE_SIZE).fill(0).map((_,i)=>Math.sin((i/WAVE_SIZE)*Math.PI*2));
-        let lastWaveSync = 0;
-        function drawWave(b){ 
-            const w=waveCanvas.width, h=waveCanvas.height, c=h/2;
-            waveCtx.clearRect(0,0,w,h); waveCtx.strokeStyle='#333'; waveCtx.beginPath(); waveCtx.moveTo(0,c); waveCtx.lineTo(w,c); waveCtx.stroke(); 
-            waveCtx.beginPath(); waveCtx.strokeStyle='#00ffcc'; waveCtx.lineWidth=2; 
-            for(let i=0;i<WAVE_SIZE;i++){ const x=(i/(WAVE_SIZE-1))*w, y=c-(b[i]*(h/2)); if(i===0)waveCtx.moveTo(x,y); else waveCtx.lineTo(x,y); } 
-            waveCtx.stroke(); waveCtx.lineTo(w,c); waveCtx.lineTo(0,c); waveCtx.fillStyle='rgba(0, 255, 204, 0.1)'; waveCtx.fill(); 
-        }
-        
-        let isDrawingWave=false;
-        function updateWave(cx,cy){ 
-            const r=waveCanvas.getBoundingClientRect(); const nx=Math.max(0,Math.min(1,(cx-r.left)/r.width)), ny=-((Math.max(0,Math.min(1,(cy-r.top)/r.height))*2)-1);
-            const idx=Math.floor(nx*(WAVE_SIZE-1)); if(idx>=0&&idx<WAVE_SIZE) waveBuffer[idx]=ny; 
-            drawWave(waveBuffer); 
-            updateSynthWave(waveBuffer);
-            if(Date.now() - lastWaveSync > 30) { socket.emit('update_waveform', waveBuffer); lastWaveSync = Date.now(); }
-        }
-        
-        const handleWaveStart = e => { 
-            isDrawingWave = true; 
-            if(e.type === 'mousedown') handleWaveMove(e);
-            else if(e.type === 'touchstart') { e.preventDefault(); const t = e.touches[0]; updateWave(t.clientX, t.clientY); }
-        }; 
-        const handleWaveEnd = () => { if(isDrawingWave){isDrawingWave=false; socket.emit('update_waveform',waveBuffer)} }; 
-        const handleWaveMove = e => { 
-            if(!isDrawingWave) return; 
-            e.preventDefault(); 
-            const t = e.touches ? e.touches[0] : e; updateWave(t.clientX, t.clientY); 
-        };
-        
-        waveCanvas.addEventListener('mousedown', handleWaveStart); window.addEventListener('mouseup', handleWaveEnd); waveCanvas.addEventListener('mousemove', handleWaveMove);
-        waveCanvas.addEventListener('touchstart', handleWaveStart, {passive: false}); window.addEventListener('touchend', handleWaveEnd); waveCanvas.addEventListener('touchmove', handleWaveMove, {passive: false});
-        
-        resetBtn.addEventListener('click', e=>{e.stopPropagation(); waveBuffer=waveBuffer.map((_,i)=>Math.sin((i/WAVE_SIZE)*Math.PI*2)); drawWave(waveBuffer); updateSynthWave(waveBuffer); socket.emit('update_waveform',waveBuffer)});
-        resetBtn.addEventListener('touchstart', e=>e.stopPropagation(),{passive:false});
-
-        function updateSynthWave(buffer) {
-            if(!synth) return;
-            const N = buffer.length; const numHarmonics = 32; const partials = [];
-            for (let k = 1; k <= numHarmonics; k++) {
-                let r = 0, i = 0;
-                for (let n = 0; n < N; n++) {
-                    const angle = (2 * Math.PI * k * n) / N;
-                    r += buffer[n] * Math.cos(angle);
-                    i += buffer[n] * Math.sin(angle);
-                }
-                partials.push(Math.sqrt(r * r + i * i));
-            }
-            const max = Math.max(...partials);
-            synth.set({oscillator:{partials:max>0.0001?partials.map(v=>v/max):partials}});
-        }
-
-        const adsrC=document.getElementById('adsr-canvas'), adsrCtx=adsrC.getContext('2d'), slA=document.getElementById('adsr-a'), slD=document.getElementById('adsr-d'), slS=document.getElementById('adsr-s'), slR=document.getElementById('adsr-r');
-        let lastAdsrSync = 0;
-        function drawADSRVisual(){ 
-            const w=adsrC.width, h=adsrC.height;
-            adsrCtx.clearRect(0,0,w,h); adsrCtx.fillStyle='rgba(0,0,0,0.3)'; adsrCtx.fillRect(0,0,w,h);
-            const A=parseFloat(slA.value), D=parseFloat(slD.value), S=parseFloat(slS.value), R=parseFloat(slR.value);
-            adsrCtx.beginPath(); adsrCtx.strokeStyle='#00ffcc'; adsrCtx.lineWidth=2;
-            const x1=(A/2)*(w*0.25), y2=h-(S*h), x2=x1+(D/2)*(w*0.25), x3=x2+(w*0.2), x4=Math.min(w,x3+(R/5)*(w*0.3));
-            adsrCtx.moveTo(0,h); adsrCtx.lineTo(x1,0); adsrCtx.lineTo(x2,y2); adsrCtx.lineTo(x3,y2); adsrCtx.lineTo(x4,h); adsrCtx.stroke();
-        }
-        const updateADSR=()=>{ 
-            localADSR={attack:parseFloat(slA.value),decay:parseFloat(slD.value),sustain:parseFloat(slS.value),release:parseFloat(slR.value)}; 
-            drawADSRVisual(); if(synth)synth.set({envelope:localADSR}); 
-            if(Date.now() - lastAdsrSync > 30) { socket.emit('update_adsr',localADSR); lastAdsrSync = Date.now(); }
-        };
-        [slA,slD,slS,slR].forEach(s=>{ s.addEventListener('input',updateADSR); s.addEventListener('change',()=>socket.emit('update_adsr',localADSR)); s.addEventListener('touchstart',e=>e.stopPropagation(),{passive:false}); s.addEventListener('mousedown',e=>e.stopPropagation()) });
-
-        const scaleBtns = document.querySelectorAll('.scale-btn');
+        // Scale
         scaleBtns.forEach(btn => {
             btn.addEventListener('click', (e) => { e.stopPropagation(); socket.emit('update_scale', btn.dataset.scale); });
-            // touchstartでstopPropagationするとスクロールできなくなるため削除、CSS touch-actionで対応
         });
 
-        // --- Swipe to Play ---
-        let isPointerDown = false;
-        let lastMoveNoteTime = 0;
-        const MOVE_NOTE_INTERVAL = 100;
-
+        // --- Note Triggering ---
+        let lastMoveNoteTime = 0; const MOVE_NOTE_INTERVAL = 100;
         function triggerNoteFromInput(normX, normY) {
             if (normX < 0 || normX > 1 || normY < 0 || normY > 1) return;
-            const scaleNotes = SCALES[currentScaleName];
-            
-            // ★ 安全策: スケールが見つからない場合はデフォルトに戻す
-            if (!scaleNotes) {
-                console.error("Scale not found:", currentScaleName);
-                return; 
-            }
-
+            const scaleNotes = SCALES[currentScaleName] || SCALES["MYSTERIOUS"];
             const noteIndex = Math.floor((1 - normY) * scaleNotes.length);
             const note = scaleNotes[Math.min(noteIndex, scaleNotes.length - 1)];
-            
             const noteData = { note, duration: 0.5 + normX * 4.0, normX, normY, id: socket.id };
             playAndVisualizeNote(noteData); 
-
             socket.emit('play_note', { note, duration: noteData.duration, normX, normY });
         }
-
         function handleInput(e, isMove) {
             if (!isStarted) return;
             const target = e.target;
             if (['INPUT', 'BUTTON'].includes(target.tagName)) return;
             if (['wave-canvas','adsr-canvas','eq-canvas'].includes(target.id)) return;
-            // スケールボタンのコンテナ内なら無視
             if (target.closest('.scale-grid')) return;
 
             const cX = e.touches ? e.touches[0].clientX : e.clientX;
             const cY = e.touches ? e.touches[0].clientY : e.clientY;
-            
             const controlsRect = document.getElementById('controls').getBoundingClientRect();
             if (controlsRect.top <= cY) return;
 
             const w = window.innerWidth; const h = window.innerHeight;
             const centerX = w / 2; const centerY = (h / 2) - playAreaOffsetY;
-            const normX = ((cX - centerX) / playAreaSize) + 0.5;
-            const normY = ((cY - centerY) / playAreaSize) + 0.5;
+            const normX = ((cX - centerX) / playAreaSize) + 0.5; const normY = ((cY - centerY) / playAreaSize) + 0.5;
 
-            if (isMove) {
-                const now = Date.now();
-                if (now - lastMoveNoteTime > MOVE_NOTE_INTERVAL) {
-                    triggerNoteFromInput(normX, normY);
-                    lastMoveNoteTime = now;
-                }
-            } else {
-                triggerNoteFromInput(normX, normY);
-                lastMoveNoteTime = Date.now();
-            }
+            if (isMove) { const now = Date.now(); if (now - lastMoveNoteTime > MOVE_NOTE_INTERVAL) { triggerNoteFromInput(normX, normY); lastMoveNoteTime = now; } } 
+            else { triggerNoteFromInput(normX, normY); lastMoveNoteTime = Date.now(); }
         }
-
-        function onPointerDown(e) { isPointerDown = true; handleInput(e, false); }
-        function onPointerMove(e) { 
-            if (isPointerDown) {
-                const target = e.target;
-                const inControls = document.getElementById('controls').contains(target);
-                if (!inControls) { e.preventDefault(); handleInput(e, true); }
-            }
-        }
-        function onPointerUp() { isPointerDown = false; prevNotePos = null; }
-
+        let isPointerDown = false;
+        const onPointerDown = e => { isPointerDown = true; handleInput(e, false); };
+        const onPointerMove = e => { if (isPointerDown) { const target = e.target; if (!document.getElementById('controls').contains(target)) { e.preventDefault(); handleInput(e, true); } } };
+        const onPointerUp = () => { isPointerDown = false; prevNotePos = null; };
         window.addEventListener('mousedown', onPointerDown); window.addEventListener('mousemove', onPointerMove); window.addEventListener('mouseup', onPointerUp);
         window.addEventListener('touchstart', onPointerDown, {passive: false}); window.addEventListener('touchmove', onPointerMove, {passive: false}); window.addEventListener('touchend', onPointerUp);
 
         function playAndVisualizeNote(data) {
             if (!synth) return;
             synth.triggerAttackRelease(data.note, data.duration);
-            
-            const xPos = (data.normX - 0.5) * playAreaSize;
-            const yPos = -(data.normY - 0.5) * playAreaSize + playAreaOffsetY;
+            const xPos = (data.normX - 0.5) * playAreaSize; const yPos = -(data.normY - 0.5) * playAreaSize + playAreaOffsetY;
             const pos = new THREE.Vector3(xPos, yPos, 0);
-
-            const isAuto = data.id === 'auto';
-            const isMe = data.id === socket.id;
+            const isAuto = data.id === 'auto'; const isMe = data.id === socket.id;
             const color = isAuto ? 0xffaa00 : (isMe ? 0x00ffcc : 0xff00cc);
-
-            const mesh = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.0, 64), new THREE.MeshBasicMaterial({ 
-                color: color, 
-                transparent: true, 
-                side: THREE.DoubleSide,
-                blending: THREE.AdditiveBlending 
-            }));
-            mesh.position.copy(pos);
-            scene.add(mesh);
+            const mesh = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.0, 64), new THREE.MeshBasicMaterial({ color: color, transparent: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+            mesh.position.copy(pos); scene.add(mesh);
             visualObjects.push({ type: 'ring', mesh, startTime: Date.now(), duration: data.duration });
 
             if (prevNotePos && !isAuto && isMe) { 
                 const points = [prevNotePos.clone(), pos.clone()];
                 const geometry = new THREE.BufferGeometry().setFromPoints(points);
                 const material = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending });
-                const line = new THREE.Line(geometry, material);
-                scene.add(line);
+                const line = new THREE.Line(geometry, material); scene.add(line);
                 visualObjects.push({ type: 'line', mesh: line, startTime: Date.now(), duration: data.duration * 2.0 }); 
             }
             if(!isAuto && isMe) prevNotePos = pos;
         }
 
-        socket.on('trigger_note', (data) => {
-            if (data.id === socket.id) return;
-            playAndVisualizeNote(data);
-        });
+        socket.on('trigger_note', (data) => { if (data.id !== socket.id) playAndVisualizeNote(data); });
 
-        // ★ データ受信時: ローカル変数を即更新し、Canvasも再描画する (synthがなくても)
-        socket.on('sync_waveform', d => { 
-            waveBuffer = d; 
-            resizeCanvases(); 
-            if(synth) updateSynthWave(d); 
-        });
-        socket.on('sync_adsr', d => { 
-            localADSR = d; 
-            slA.value=d.attack; slD.value=d.decay; slS.value=d.sustain; slR.value=d.release; 
-            resizeCanvases(); 
-            if(synth) synth.set({envelope:d}); 
-        });
-        socket.on('sync_mixer', d => updateMixer(d));
-        socket.on('sync_eq', d => { 
-            localEQ = d; 
-            resizeCanvases(); 
-            if(eqLow){ eqLow.frequency.value=d.low.freq; eqLow.gain.value=d.low.gain; eqMid.frequency.value=d.mid.freq; eqMid.gain.value=d.mid.gain; eqHigh.frequency.value=d.high.freq; eqHigh.gain.value=d.high.gain; } 
-        });
-        socket.on('sync_scale', (scaleName) => { 
-            currentScaleName = scaleName; 
-            scaleBtns.forEach(btn => { 
-                if(btn.dataset.scale === scaleName) btn.classList.add('active'); 
-                else btn.classList.remove('active'); 
-            }); 
-        });
-        socket.on('sync_auto', (data) => {
-            localAuto = data;
-            updateAutoUI();
-        });
     </script>
 </body>
 </html>
