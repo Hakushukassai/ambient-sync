@@ -1,25 +1,46 @@
 const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
-const io = require('socket.io')(http);
+const io = require('socket.io')(http, {
+    cors: { origin: "*" }
+});
 const path = require('path');
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- 音楽理論データ ---
-const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
-const SCALE_DEFINITIONS = {
-    "MINOR_PENTATONIC": [0, 3, 5, 7, 10], 
-    "MAJOR":            [0, 2, 4, 5, 7, 9, 11],
-    "MINOR":            [0, 2, 3, 5, 7, 8, 10],
-    "DORIAN":           [0, 2, 3, 5, 7, 9, 10],
-    "LYDIAN":           [0, 2, 4, 6, 7, 9, 11],
-    "RYUKYU":           [0, 4, 5, 7, 11],
-    "MIYAKOBUSHI":      [0, 1, 5, 7, 8],
-    "WHOLE_TONE":       [0, 2, 4, 6, 8, 10]
+// --- サーバー側の状態管理 (初期値) ---
+// ※ここが「正」となるデータです
+let globalState = {
+    waveform: new Array(128).fill(0).map((_, i) => Math.sin((i / 128) * Math.PI * 2)),
+    eq: {
+        low:  { freq: 100,  gain: 0 },
+        mid:  { freq: 1000, gain: 0 },
+        high: { freq: 5000, gain: 0 }
+    },
+    mixer: { synth: -4 },
+    adsr: { attack: 0.05, decay: 0.2, sustain: 0.5, release: 1.0 },
+    scale: "MINOR_PENTATONIC",
+    auto: { active: false, speed: 30 },
+    // パラメータ (0.0-1.0)
+    params: {
+        'FILTER': 0.5, 'PAN': 0.5, 'VOL': 0.8, 'REVERB': 0.0,
+        'ATTACK': 0.05, 'DECAY': 0.2, 'SUSTAIN': 0.5, 'RELEASE': 0.3
+    }
 };
 
-function generateScale(intervals) {
+let connectedUsers = {};
+let autoPlayTimeout = null;
+
+// スケール定義
+const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+const SCALE_DEFINITIONS = {
+    "MINOR_PENTATONIC": [0, 3, 5, 7, 10], "MAJOR": [0, 2, 4, 5, 7, 9, 11],
+    "MINOR": [0, 2, 3, 5, 7, 8, 10], "DORIAN": [0, 2, 3, 5, 7, 9, 10],
+    "LYDIAN": [0, 2, 4, 6, 7, 9, 11], "RYUKYU": [0, 4, 5, 7, 11],
+    "MIYAKOBUSHI": [0, 1, 5, 7, 8], "WHOLE_TONE": [0, 2, 4, 6, 8, 10]
+};
+const SCALES = {};
+for (const [name, intervals] of Object.entries(SCALE_DEFINITIONS)) {
     const notes = [];
     for (let oct = 2; oct <= 7; oct++) {
         for (let i = 0; i < 12; i++) {
@@ -29,161 +50,107 @@ function generateScale(intervals) {
             }
         }
     }
-    return notes;
+    SCALES[name] = notes;
 }
 
-const SCALES = {};
-for (const [name, intervals] of Object.entries(SCALE_DEFINITIONS)) {
-    SCALES[name] = generateScale(intervals);
-}
-
-// --- サーバー側の状態管理 ---
-const WAVE_SIZE = 128;
-let currentWaveform = new Array(WAVE_SIZE).fill(0).map((_, i) => 
-    Math.sin((i / WAVE_SIZE) * Math.PI * 2)
-);
-
-// EQ (Low/Mid/High Gain)
-let currentEQ = {
-    low:  { freq: 100,  gain: 4 },
-    mid:  { freq: 1000, gain: -2 },
-    high: { freq: 5000, gain: -6 }
-};
-
-let currentScaleName = "MYSTERIOUS";
-let autoPlayState = { active: false, speed: 30 };
-let autoPlayTimeout = null;
-
-// 全パラメータ (0.0 - 1.0)
-let globalParams = {
-    'FILTER': 0.5,
-    'PAN': 0.5,
-    'VOL': 0.8,
-    'REVERB': 0.0,
-    'ATTACK': 0.05,
-    'DECAY': 0.1,
-    'SUSTAIN': 0.5,
-    'RELEASE': 0.3
-};
-
-// ユーザー管理
-let connectedUsers = {};
-
+// ユーザーカラー生成
 function getRandomColor() {
     const letters = '0123456789ABCDEF';
     let color = '#';
-    for (let i = 0; i < 6; i++) {
-        color += letters[Math.floor(Math.random() * 16)];
-    }
+    for (let i = 0; i < 6; i++) { color += letters[Math.floor(Math.random() * 16)]; }
     return color;
 }
 
+// オートプレイロジック
 function scheduleNextAutoNote() {
     if (autoPlayTimeout) clearTimeout(autoPlayTimeout);
-    if (!autoPlayState.active) return;
-    playAutoNote();
-    const slowLimit = 8000;
-    const fastLimit = 150;
-    const baseInterval = slowLimit - ((autoPlayState.speed / 100) * (slowLimit - fastLimit));
-    const randomFactor = 0.2 + (Math.random() * 1.6); 
-    const nextDelay = baseInterval * randomFactor;
-    autoPlayTimeout = setTimeout(scheduleNextAutoNote, nextDelay);
-}
+    if (!globalState.auto.active) return;
 
-function playAutoNote() {
-    const normX = Math.random();
-    const normY = Math.random();
-    const scaleNotes = SCALES[currentScaleName] || SCALES["MINOR_PENTATONIC"];
-    const noteIndex = Math.floor((1 - normY) * scaleNotes.length);
-    const note = scaleNotes[Math.min(noteIndex, scaleNotes.length - 1)];
+    const slowLimit = 5000; const fastLimit = 100;
+    const baseInterval = slowLimit - ((globalState.auto.speed / 100) * (slowLimit - fastLimit));
+    const randomFactor = 0.5 + Math.random(); 
     
+    // 音を鳴らす
+    const scaleNotes = SCALES[globalState.scale] || SCALES["MINOR_PENTATONIC"];
+    const normX = Math.random(); const normY = Math.random();
+    const noteIndex = Math.floor((1 - normY) * scaleNotes.length);
+    const note = scaleNotes[Math.min(noteIndex, scaleNotes.length - 1)] || "C4";
+
     io.emit('trigger_note', { 
-        note: note, 
-        duration: 0.5 + normX * 4.0, 
-        normX: normX, 
-        normY: normY,
-        id: 'auto'
+        note: note, duration: 0.5 + normX * 2.0, normX: normX, normY: normY, id: 'auto' 
     });
+
+    autoPlayTimeout = setTimeout(scheduleNextAutoNote, Math.max(100, baseInterval * randomFactor));
 }
 
 io.on('connection', (socket) => {
-    // ユーザー登録
     const userColor = getRandomColor();
     connectedUsers[socket.id] = { color: userColor };
-    
-    console.log(`User connected: ${socket.id} (${userColor})`);
+    console.log(`User connected: ${socket.id}`);
 
-    // 全員にユーザーリスト更新を通知
-    io.emit('update_users', connectedUsers);
-
-    // 新規ユーザーへ初期データ送信
-    socket.emit('init_setup', {
+    // ① 接続時に現状の全データを送る
+    socket.emit('init_state', {
         id: socket.id,
         color: userColor,
-        waveform: currentWaveform,
-        eq: currentEQ,
-        scale: currentScaleName,
-        auto: autoPlayState,
-        params: globalParams
+        state: globalState,
+        users: connectedUsers
     });
 
-    // 演奏イベント
+    // ② 全員にユーザー更新を通知
+    io.emit('update_users', connectedUsers);
+
+    // --- イベントハンドラ ---
+
     socket.on('play_note', (data) => {
-        io.emit('trigger_note', { ...data, id: socket.id });
+        // そのまま全員に転送（サーバー負荷軽減のため計算しない）
+        socket.broadcast.emit('trigger_note', { ...data, id: socket.id });
     });
 
-    // 波形更新
     socket.on('update_waveform', (data) => {
-        if (Array.isArray(data)) {
-            currentWaveform = data;
-            socket.broadcast.emit('sync_waveform', { data: currentWaveform, userId: socket.id });
-        }
+        globalState.waveform = data;
+        socket.broadcast.emit('sync_state_part', { key: 'waveform', value: data, userId: socket.id });
     });
 
-    // EQ更新 (Gain/Freq)
     socket.on('update_eq', (data) => {
-        if (data) {
-            currentEQ = data;
-            socket.broadcast.emit('sync_eq', { data: currentEQ, userId: socket.id });
-        }
+        globalState.eq = data;
+        socket.broadcast.emit('sync_state_part', { key: 'eq', value: data, userId: socket.id });
     });
 
-    // スケール更新
+    socket.on('update_mixer', (data) => {
+        globalState.mixer = data;
+        socket.broadcast.emit('sync_state_part', { key: 'mixer', value: data, userId: socket.id });
+    });
+
+    socket.on('update_adsr', (data) => {
+        globalState.adsr = data;
+        socket.broadcast.emit('sync_state_part', { key: 'adsr', value: data, userId: socket.id });
+    });
+
     socket.on('update_scale', (scaleName) => {
-        currentScaleName = scaleName;
-        io.emit('sync_scale', { scale: currentScaleName, userId: socket.id });
+        globalState.scale = scaleName;
+        io.emit('sync_state_part', { key: 'scale', value: scaleName, userId: socket.id });
     });
 
-    // オートプレイ更新
     socket.on('update_auto', (data) => {
-        const wasActive = autoPlayState.active;
-        autoPlayState = data;
-        io.emit('sync_auto', { data: autoPlayState, userId: socket.id });
+        const wasActive = globalState.auto.active;
+        globalState.auto = data;
+        io.emit('sync_state_part', { key: 'auto', value: data, userId: socket.id });
         
-        if (autoPlayState.active && !wasActive) {
-            scheduleNextAutoNote();
-        } else if (!autoPlayState.active) {
-            if (autoPlayTimeout) clearTimeout(autoPlayTimeout);
-        }
+        if (globalState.auto.active && !wasActive) scheduleNextAutoNote();
+        else if (!globalState.auto.active && autoPlayTimeout) clearTimeout(autoPlayTimeout);
     });
 
-    // パラメータ更新 (FILTER, ADSR, etc)
     socket.on('update_param', (data) => {
-        if (data && data.target && typeof data.value === 'number') {
-            globalParams[data.target] = data.value;
-            // 更新者IDを付けてブロードキャスト
-            socket.broadcast.emit('sync_param', { 
-                target: data.target, 
-                value: data.value, 
-                userId: socket.id 
-            });
+        // target: 'FILTER', value: 0.5
+        if (data && data.target) {
+            globalState.params[data.target] = data.value;
+            socket.broadcast.emit('sync_param', { target: data.target, value: data.value, userId: socket.id });
         }
     });
 
     socket.on('disconnect', () => {
         delete connectedUsers[socket.id];
         io.emit('update_users', connectedUsers);
-        console.log('User disconnected:', socket.id);
     });
 });
 
