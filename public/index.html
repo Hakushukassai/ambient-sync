@@ -5,26 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Synth Master Sync</title>
     <style>
-        /* 全体のスクロールは禁止するが、必要な部分は許可する */
         body { margin: 0; overflow: hidden; background: #080808; touch-action: none; color: white; font-family: monospace; }
         
-        /* コントロールパネルのスクロール設定修正 */
         #controls {
             position: fixed; bottom: 0; left: 0; width: 100%; height: 280px; 
             background: linear-gradient(transparent, rgba(0,0,0,0.95) 15%);
             display: flex; flex-direction: row; justify-content: center; align-items: center;
             padding-bottom: 20px; z-index: 50; gap: 15px; box-sizing: border-box;
             
-            /* ★スマホ修正: 横スクロールを許可 */
+            /* 横スクロール許可 */
             overflow-x: auto; 
             touch-action: pan-x; 
             -webkit-overflow-scrolling: touch;
             
-            /* デスクトップ用センタリング */
             justify-content: flex-start;
         }
-
-        /* スクロールバーは隠す */
         #controls::-webkit-scrollbar { display: none; }
 
         .panel-section {
@@ -34,12 +29,9 @@
             backdrop-filter: blur(10px); width: 260px; height: 210px;
             justify-content: flex-start; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
             flex-shrink: 0; position: relative; 
-            
-            /* スクロール時のスナップ */
             scroll-snap-align: center; margin-right: 5px;
         }
         
-        /* PC画面では中央寄せ */
         @media (min-width: 1100px) { 
             #controls { justify-content: center; overflow-x: visible; } 
             .panel-section { margin-right: 0; }
@@ -65,14 +57,11 @@
         .sliders { display: flex; gap: 10px; width: 100%; justify-content: space-between; margin-top: 5px; }
         .slider-group { display: flex; flex-direction: column; align-items: center; position: relative; }
         
-        /* ★スマホ修正: スライダー操作時に画面がスクロールしないようにする */
         input[type=range].vertical {
             -webkit-appearance: none; appearance: none; width: 30px; height: 100px;
             background: transparent; outline: none; writing-mode: bt-lr; -webkit-appearance: slider-vertical;
             cursor: pointer; position: relative; z-index: 2;
             background: linear-gradient(to right, transparent 13px, #222 13px, #222 17px, transparent 17px);
-            
-            /* 重要: スライダー操作時はスクロール禁止 */
             touch-action: none; 
         }
         input[type=range].vertical::-webkit-slider-thumb {
@@ -95,14 +84,15 @@
         .scale-grid { 
             display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; margin-top: 5px; height: 100%; 
             overflow-y: auto; align-content: start; 
-            /* グリッド内の縦スクロールは許可 */
             touch-action: pan-y; 
         }
         .scale-btn { 
             padding: 8px 4px; font-size: 9px; text-align: left; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
             border: 1px solid #333; background: rgba(0,0,0,0.3); box-sizing: border-box; 
             cursor: pointer;
+            /* 重要: タッチ動作を明示 */
             touch-action: manipulation;
+            user-select: none;
         }
         .scale-btn.active { border-color: #00ffcc; background: rgba(0,255,204,0.2); color: white; box-shadow: 0 0 8px rgba(0,255,204,0.3); }
 
@@ -155,7 +145,7 @@
         <span>PLAY INSIDE THE SQUARE</span>
     </div>
 
-    <div id="version-display">v1.5 - MOBILE FIX & SYNC REPAIR</div>
+    <div id="version-display">v1.6 - SYNC CORE & SCALE FIX</div>
 
     <button id="sensor-btn">SENSOR: OFF</button>
     
@@ -421,48 +411,63 @@
         const waveCanvas=document.getElementById('wave-canvas'), waveCtx=waveCanvas.getContext('2d'), resetBtn=document.getElementById('reset-btn');
         const adsrC=document.getElementById('adsr-canvas'), adsrCtx=adsrC.getContext('2d');
 
-        // --- Sensor ---
+        // --- Sensor & Value Logic ---
         let isSensorActive = false; let lastSensorSync = 0;
         const TARGETS_X = ['FILTER', 'PAN', 'VOL']; const TARGETS_Y = ['REVERB', 'DECAY', 'RELEASE'];
         let myTargets = { x: 'FILTER', y: 'REVERB' };
-        let currentParamsValue = {};
-
-        function applyAudioParam(target, val) {
-            currentParamsValue[target] = val; 
+        
+        // ★コアロジック: 値が更新されたら、Audio、UI(スライダー)、Visual(カーソル/メーター)全てを同期する
+        function updateAllSystems(target, val, skipUI = false) {
+            // 1. Visual Cursor (3D) Target
             if (target === myTargets.x) cursorTargetPos.x = (val - 0.5) * playAreaSize;
             if (target === myTargets.y) cursorTargetPos.y = (val - 0.5) * playAreaSize;
 
+            // 2. Sensor Meter Target
+            if (myTargets.x === target) meterTargetVal.x = val;
+            if (myTargets.y === target) meterTargetVal.y = val;
+
             if (!synth) return;
 
-            if (target === 'FILTER') { const freq = 100 * Math.pow(80, val); if(globalFilter) globalFilter.frequency.rampTo(freq, 0.1); } 
-            else if (target === 'PAN') { const panVal = (val * 2) - 1; if(panner) panner.pan.rampTo(panVal, 0.1); } 
-            else if (target === 'VOL') { 
-                const vol = (val * 60) - 60; synth.volume.rampTo(vol, 0.1); 
-                volSynth.value = vol; // Force UI Update
+            // 3. Audio & UI Sliders
+            if (target === 'FILTER') { 
+                const freq = 100 * Math.pow(80, val); 
+                if(globalFilter) globalFilter.frequency.rampTo(freq, 0.1); 
             } 
-            else if (target === 'REVERB') { if(reverb) reverb.wet.rampTo(val, 0.1); } 
+            else if (target === 'PAN') { 
+                const panVal = (val * 2) - 1; 
+                if(panner) panner.pan.rampTo(panVal, 0.1); 
+            } 
+            else if (target === 'VOL') { 
+                // val(0-1) -> -60 to 0
+                const vol = (val * 60) - 60; 
+                synth.volume.rampTo(vol, 0.1);
+                if(!skipUI) volSynth.value = vol; // Slider update
+            } 
+            else if (target === 'REVERB') { 
+                if(reverb) reverb.wet.rampTo(val, 0.1); 
+            } 
             else if (target === 'DECAY') { 
-                const d = 0.1 + (val * 1.9); synth.set({ envelope: { decay: d } }); 
-                slD.value = d; drawADSRVisual(); // Force UI Update
+                // val(0-1) -> 0.1-2.0
+                const d = 0.1 + (val * 1.9); 
+                synth.set({ envelope: { decay: d } });
+                if(!skipUI) { slD.value = d; drawADSRVisual(); }
             } 
             else if (target === 'RELEASE') { 
-                const r = 0.1 + (val * 4.9); synth.set({ envelope: { release: r } }); 
-                slR.value = r; drawADSRVisual(); // Force UI Update
+                // val(0-1) -> 0.1-5.0
+                const r = 0.1 + (val * 4.9); 
+                synth.set({ envelope: { release: r } });
+                if(!skipUI) { slR.value = r; drawADSRVisual(); }
             }
         }
 
-        function updateSensorVisuals(target, val) {
-            if (myTargets.x === target) meterTargetVal.x = val;
-            if (myTargets.y === target) meterTargetVal.y = val;
-        }
-
+        // センサーハンドラ
         function handleSensor(e) {
             if (!isStarted || !isSensorActive) return;
             const gamma = e.gamma || 0; const normGamma = Math.max(-1, Math.min(1, gamma / 45)); const valX = (normGamma + 1) / 2; 
             const beta = e.beta || 0; const normBeta = Math.max(-1, Math.min(1, (beta - 45) / 45)); const valY = (1.0 - ((normBeta + 1) / 2)); 
 
-            applyAudioParam(myTargets.x, valX); applyAudioParam(myTargets.y, valY);
-            updateSensorVisuals(myTargets.x, valX); updateSensorVisuals(myTargets.y, valY);
+            updateAllSystems(myTargets.x, valX); 
+            updateAllSystems(myTargets.y, valY);
 
             const now = Date.now();
             if (now - lastSensorSync > 100) {
@@ -492,31 +497,39 @@
             else { sensorBtn.textContent = "SENSOR: OFF"; sensorBtn.classList.remove("active"); window.removeEventListener('deviceorientation', handleSensor); }
         }
 
-        // --- Socket Sync Logic (FIXED) ---
+        // --- Socket Receivers (統合版) ---
+        // 他の人が変更した値を、自分の「全システム(Audio+UI+Visual)」に反映する
 
         socket.on('sync_all_params', (params) => {
-            for (const [key, val] of Object.entries(params)) { applyAudioParam(key, val); updateSensorVisuals(key, val); }
+            for (const [key, val] of Object.entries(params)) { updateAllSystems(key, val); }
         });
-        socket.on('sync_param', (data) => { applyAudioParam(data.target, data.value); updateSensorVisuals(data.target, data.value); });
+        socket.on('sync_param', (data) => { updateAllSystems(data.target, data.value); });
 
         socket.on('sync_waveform', d => { 
-            waveBuffer = d; 
-            drawWave(waveBuffer); 
-            if(synth) updateSynthWave(d); 
+            waveBuffer = d; drawWave(waveBuffer); if(synth) updateSynthWave(d); 
         });
 
+        // 手動スライダー(ADSR/Mixer)の受信時も、updateAllSystemsを通じてビジュアル反映させる
         socket.on('sync_adsr', d => { 
             localADSR = d; 
-            // DOM FORCE UPDATE
-            slA.value=d.attack; slD.value=d.decay; slS.value=d.sustain; slR.value=d.release; 
-            drawADSRVisual(); 
-            if(synth) synth.set({envelope:d}); 
+            // 0-1の正規化値に戻して updateAllSystems に渡すことで、ビジュアルカーソルも同期させる
+            // Decay: 0.1-2.0 -> (d-0.1)/1.9
+            // Release: 0.1-5.0 -> (r-0.1)/4.9
+            const normD = (d.decay - 0.1) / 1.9;
+            const normR = (d.release - 0.1) / 4.9;
+            updateAllSystems('DECAY', Math.max(0, Math.min(1, normD)));
+            updateAllSystems('RELEASE', Math.max(0, Math.min(1, normR)));
+            
+            // 残りのAttack/Sustainは直接反映
+            slA.value=d.attack; slS.value=d.sustain; drawADSRVisual();
+            if(synth) synth.set({envelope:d});
         });
 
         socket.on('sync_mixer', d => {
             localMixer = d;
-            volSynth.value = d.synth; // DOM FORCE UPDATE
-            if(synth) synth.volume.value = d.synth;
+            // Vol: -60 to 0 -> (v+60)/60
+            const normVol = (d.synth + 60) / 60;
+            updateAllSystems('VOL', Math.max(0, Math.min(1, normVol)));
         });
 
         socket.on('sync_eq', d => { 
@@ -540,30 +553,51 @@
         });
 
 
-        // --- UI Events (Emit) ---
-        // ★ スマホ対策: イベントリスナーを単純化し、touch-actionはCSSに任せる
-
+        // --- UI Logic ---
+        
         // Auto
         let lastAutoSync = 0;
         autoBtn.addEventListener('click', (e) => { e.stopPropagation(); localAuto.active = !localAuto.active; socket.emit('update_auto', localAuto); });
         autoSpeed.addEventListener('input', () => { localAuto.speed = parseInt(autoSpeed.value); if(Date.now() - lastAutoSync > 100) { socket.emit('update_auto', localAuto); lastAutoSync = Date.now(); } });
 
-        // Mixer
+        // Mixer (Manual Slider)
         let lastMixerSync = 0;
         volSynth.addEventListener('input',()=>{ 
-            localMixer.synth = parseFloat(volSynth.value);
-            if(synth) synth.volume.value = localMixer.synth;
+            const val = parseFloat(volSynth.value);
+            // 手動操作時も updateAllSystems を呼ぶことでビジュアルを同期させる
+            const normVol = (val + 60) / 60;
+            updateAllSystems('VOL', normVol, true); // true = skipUI (スライダー自体は自分で動かしてるから)
+            
+            localMixer.synth = val;
             if(Date.now()-lastMixerSync>30){socket.emit('update_mixer',localMixer);lastMixerSync=Date.now();} 
         });
         
-        // ADSR
+        // ADSR (Manual Slider)
         let lastAdsrSync = 0;
         const updateADSR=()=>{ 
-            localADSR={attack:parseFloat(slA.value),decay:parseFloat(slD.value),sustain:parseFloat(slS.value),release:parseFloat(slR.value)}; 
-            drawADSRVisual(); if(synth)synth.set({envelope:localADSR}); 
+            localADSR={attack:parseFloat(slA.value),decay:parseFloat(slD.value),sustain:parseFloat(slS.value),release:parseFloat(slR.value)};
+            
+            // ビジュアル同期
+            const normD = (localADSR.decay - 0.1) / 1.9;
+            const normR = (localADSR.release - 0.1) / 4.9;
+            updateAllSystems('DECAY', normD, true);
+            updateAllSystems('RELEASE', normR, true);
+            
+            drawADSRVisual();
             if(Date.now() - lastAdsrSync > 30) { socket.emit('update_adsr',localADSR); lastAdsrSync = Date.now(); }
         };
-        [slA,slD,slS,slR].forEach(s=>{ s.addEventListener('input',updateADSR); }); // StopPropagation削除
+        [slA,slD,slS,slR].forEach(s=>{ s.addEventListener('input',updateADSR); });
+
+        // Scale Button (Pointerdown for fast reaction)
+        scaleBtns.forEach(btn => {
+            btn.addEventListener('pointerdown', (e) => {
+                e.stopPropagation();
+                // Optimistic UI: 即座に見た目を変える
+                scaleBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                socket.emit('update_scale', btn.dataset.scale);
+            });
+        });
 
         // Waveform
         let lastWaveSync = 0; let isDrawingWave=false;
@@ -669,12 +703,7 @@
         eqCanvas.addEventListener('mousedown', e=>handleEQMove(e.clientX,e.clientY,true)); window.addEventListener('mousemove', e=>{if(draggingPoint)handleEQMove(e.clientX,e.clientY,false)}); window.addEventListener('mouseup', endEQDrag);
         eqCanvas.addEventListener('touchstart', e=>{e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,true)},{passive:false}); window.addEventListener('touchmove', e=>{if(draggingPoint){e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,false)}},{passive:false}); window.addEventListener('touchend', endEQDrag);
 
-        // Scale
-        scaleBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => { e.stopPropagation(); socket.emit('update_scale', btn.dataset.scale); });
-        });
-
-        // --- Note Triggering ---
+        // Note Triggering
         let lastMoveNoteTime = 0; const MOVE_NOTE_INTERVAL = 100;
         function triggerNoteFromInput(normX, normY) {
             if (normX < 0 || normX > 1 || normY < 0 || normY > 1) return;
