@@ -6,7 +6,7 @@ const path = require('path');
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- 音楽理論データ (HTML側と完全に一致させる) ---
+// --- 音楽理論データ ---
 const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
 const SCALE_DEFINITIONS = {
     "MYSTERIOUS":       [0, 2, 3, 6, 7, 8, 11],
@@ -55,12 +55,13 @@ let currentScaleName = "MYSTERIOUS";
 let autoPlayState = { active: false, speed: 30 };
 let autoPlayTimeout = null;
 
-// ★変更: FREQ（速度）もグローバルパラメータとして管理
+// ★追加: DELAYパラメータ
 let globalParams = {
     'FILTER': 0.5,
     'PAN': 0.5,
     'VOL': 0.8,
     'REVERB': 0.0,
+    'DELAY': 0.2, // PingPongDelay feedback
     'DECAY': 0.1,
     'RELEASE': 0.3,
     'FREQ': 0.3
@@ -112,6 +113,11 @@ io.on('connection', (socket) => {
         io.emit('trigger_note', { ...data, id: socket.id });
     });
 
+    socket.on('spawn_ball', (data) => {
+        // 重力ボールの生成イベントを他ユーザーに通知
+        io.emit('spawn_ball', { ...data, id: socket.id });
+    });
+
     socket.on('update_waveform', (data) => {
         if (Array.isArray(data)) {
             currentWaveform = data;
@@ -144,7 +150,6 @@ io.on('connection', (socket) => {
         if (SCALE_DEFINITIONS[scaleName]) {
             currentScaleName = scaleName;
             io.emit('sync_scale', currentScaleName);
-            console.log("Scale updated to:", currentScaleName);
         }
     });
 
@@ -163,12 +168,8 @@ io.on('connection', (socket) => {
         if (data && data.target && typeof data.value === 'number') {
             globalParams[data.target] = data.value;
             socket.broadcast.emit('sync_param', data);
-
-            // ★追加: FREQ操作時はサーバー側の自動演奏速度も更新する
             if (data.target === 'FREQ') {
                 autoPlayState.speed = Math.floor(data.value * 100);
-                // 自動演奏ループの次回のタイミング計算に反映されるため、ここでは明示的にsync_autoしなくても
-                // sync_paramでスライダーが動くのでUX的にはOK
             }
         }
     });
