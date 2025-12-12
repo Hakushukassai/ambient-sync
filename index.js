@@ -54,15 +54,14 @@ let currentScaleName = "MYSTERIOUS";
 let autoPlayState = { active: false, speed: 30 };
 let autoPlayTimeout = null;
 
-// ★新機能: グローバルなパラメータ状態 (全員で共有する値)
-// 各値は 0.0 〜 1.0 の範囲
+// ★グローバルパラメータ (全員で共有する値 0.0~1.0)
 let globalParams = {
     'FILTER': 0.5,
-    'PAN': 0.5,     // 0.5がセンター
+    'PAN': 0.5,
     'VOL': 0.8,
     'REVERB': 0.0,
-    'DECAY': 0.2,   // ADSRのD相当(正規化値)
-    'RELEASE': 0.3  // ADSRのR相当(正規化値)
+    'DECAY': 0.1,   // 0.0-1.0
+    'RELEASE': 0.3  // 0.0-1.0
 };
 
 function scheduleNextAutoNote() {
@@ -102,8 +101,6 @@ io.on('connection', (socket) => {
     socket.emit('sync_eq', currentEQ); 
     socket.emit('sync_scale', currentScaleName);
     socket.emit('sync_auto', autoPlayState);
-    
-    // ★接続時に全パラメータの現状を送る
     socket.emit('sync_all_params', globalParams);
 
     socket.on('play_note', (data) => {
@@ -154,11 +151,10 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ★特定のパラメータ更新を受け取る (例: { target: 'FILTER', value: 0.8 })
+    // ★パラメータ更新を受け取り、全員に同期
     socket.on('update_param', (data) => {
         if (data && data.target && typeof data.value === 'number') {
             globalParams[data.target] = data.value;
-            // 全員に即座に共有
             socket.broadcast.emit('sync_param', data);
         }
     });
