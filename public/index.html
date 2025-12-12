@@ -72,14 +72,6 @@
         .scale-btn { padding: 8px 4px; font-size: 9px; text-align: left; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; touch-action: pan-x; border: 1px solid #333; background: rgba(0,0,0,0.3); box-sizing: border-box; }
         .scale-btn.active { border-color: #00ffcc; background: rgba(0,255,204,0.2); color: white; box-shadow: 0 0 8px rgba(0,255,204,0.3); }
 
-        #overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.92); z-index: 999;
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            cursor: pointer; letter-spacing: 3px;
-        }
-        #overlay span { margin-top: 15px; font-size: 10px; color: #888; letter-spacing: 1px; }
-
         /* ステータスバー */
         #status-bar {
             position: fixed; top: 20px; left: 20px; z-index: 100;
@@ -138,11 +130,6 @@
 </head>
 <body>
     
-    <div id="overlay">
-        <div>TAP TO START</div>
-        <span>PLAY INSIDE THE SQUARE</span>
-    </div>
-
     <div id="status-bar">
         <span id="user-count">ONLINE: 1</span>
         <span>YOU: <span id="my-color" class="my-color-dot"></span></span>
@@ -339,9 +326,11 @@
         
         let currentScaleName = "MINOR_PENTATONIC";
 
+        // ★ 音声初期化 (どこ触ってもOK)
         async function initAudio() {
             if (isStarted) return;
             await Tone.start();
+            isStarted = true;
             
             fft = new Tone.Analyser("fft", 256);
             fft.smoothing = 0.85;
@@ -374,12 +363,15 @@
             }).connect(panner); 
 
             updateSynthWave(waveBuffer);
-
-            isStarted = true;
-            document.getElementById('overlay').style.display = 'none';
             updateLayout();
         }
-        document.getElementById('overlay').addEventListener('click', initAudio);
+        
+        // ★ 画面全体のどこを触ってもオーディオ開始
+        ['click', 'touchstart', 'keydown'].forEach(evt => {
+            window.addEventListener(evt, () => {
+                if(!isStarted) initAudio();
+            }, { once: true });
+        });
 
         // --- Visual Feedback Function ---
         function flashPanel(panelId, color) {
@@ -404,12 +396,10 @@
         let isSensorActive = false;
         let lastSensorSync = 0;
         
-        // ★ターゲット候補に ATTACK, SUSTAIN を追加
         const TARGETS_X = ['FILTER', 'PAN', 'VOL'];
         const TARGETS_Y = ['REVERB', 'ATTACK', 'DECAY', 'SUSTAIN', 'RELEASE'];
         let myTargets = { x: 'FILTER', y: 'REVERB' };
 
-        // ★ 音声だけでなくUIも更新する関数 (全員共有)
         function applyAudioParam(target, val) {
             if (!synth) return;
 
@@ -433,28 +423,24 @@
                 if(reverb) reverb.wet.rampTo(val, 0.1);
             } 
             else if (target === 'ATTACK') {
-                // val(0-1) -> 0.01 - 2.0s
                 const a = 0.01 + (val * 1.99);
                 synth.set({ envelope: { attack: a } });
                 const aSlider = document.getElementById('adsr-a');
                 if(aSlider) { aSlider.value = a; drawADSRVisual(); }
             }
             else if (target === 'DECAY') {
-                // val(0-1) -> 0.1-2.0s
                 const d = 0.1 + (val * 1.9);
                 synth.set({ envelope: { decay: d } });
                 const dSlider = document.getElementById('adsr-d');
                 if(dSlider) { dSlider.value = d; drawADSRVisual(); }
             } 
             else if (target === 'SUSTAIN') {
-                // val(0-1) -> 0.0-1.0
                 const s = val;
                 synth.set({ envelope: { sustain: s } });
                 const sSlider = document.getElementById('adsr-s');
                 if(sSlider) { sSlider.value = s; drawADSRVisual(); }
             }
             else if (target === 'RELEASE') {
-                // val(0-1) -> 0.1-5.0s
                 const r = 0.1 + (val * 4.9);
                 synth.set({ envelope: { release: r } });
                 const rSlider = document.getElementById('adsr-r');
@@ -467,9 +453,8 @@
             if (myTargets.y === target) fillY.style.height = (val * 100) + "%";
         }
 
-        // 視覚的フィードバックのトリガー
         function triggerVisualFeedback(target, color) {
-            if (target === 'FILTER' || target === 'REVERB') flashPanel('panel-eq', color); // EQパネル代用
+            if (target === 'FILTER' || target === 'REVERB') flashPanel('panel-eq', color);
             if (target === 'PAN' || target === 'VOL') flashPanel('panel-mixer', color);
             if (['ATTACK','DECAY','SUSTAIN','RELEASE'].includes(target)) flashPanel('panel-adsr', color);
         }
@@ -547,7 +532,6 @@
             myColor = data.color;
             document.getElementById('my-color').style.backgroundColor = myColor;
             
-            // パラメータ初期反映
             if(data.params) {
                 for (const [key, val] of Object.entries(data.params)) {
                     applyAudioParam(key, val);
@@ -575,15 +559,12 @@
         });
 
         socket.on('sync_param', (data) => {
-            // 音声とUIを更新
             applyAudioParam(data.target, data.value);
-            // 視覚的フィードバック（誰かが操作した！）
             const user = connectedUsers[data.userId];
             const color = user ? user.color : '#fff';
             triggerVisualFeedback(data.target, color);
         });
 
-        // Other Syncs...
         socket.on('sync_waveform', d => { 
             waveBuffer=d.data; resizeCanvases(); updateSynthWave(d.data); 
             flashPanel('panel-wave', connectedUsers[d.userId]?.color || '#fff');
@@ -607,7 +588,6 @@
             flashPanel('panel-mixer', connectedUsers[d.userId]?.color || '#fff');
         });
 
-        // Note Trigger with Color
         socket.on('trigger_note', (data) => {
             if (!synth) return;
             synth.triggerAttackRelease(data.note, data.duration);
@@ -640,7 +620,6 @@
             if(data.id !== 'auto') prevNotePos = pos;
         });
 
-        // EQ/Waveform Helper
         const eqCanvas = document.getElementById('eq-canvas'); const eqCtx = eqCanvas.getContext('2d'); const eqReadout = document.getElementById('eq-readout');
         const minFreq = 20; const maxFreq = 20000;
         function xToFreq(x, width) { return minFreq * Math.pow(maxFreq / minFreq, x / width); }
@@ -709,7 +688,6 @@
         eqCanvas.addEventListener('mousedown', e=>handleEQMove(e.clientX,e.clientY,true)); window.addEventListener('mousemove', e=>{if(draggingPoint)handleEQMove(e.clientX,e.clientY,false)}); window.addEventListener('mouseup', endEQDrag);
         eqCanvas.addEventListener('touchstart', e=>{e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,true)},{passive:false}); window.addEventListener('touchmove', e=>{if(draggingPoint){e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,false)}},{passive:false}); window.addEventListener('touchend', endEQDrag);
         
-        // --- Mixer & Waveform Helpers ---
         const volSynth=document.getElementById('vol-synth');
         let lastMixerSync = 0;
         const updateMixer=(v)=>{
@@ -745,7 +723,6 @@
         resetBtn.addEventListener('click', e=>{e.stopPropagation(); waveBuffer=waveBuffer.map((_,i)=>Math.sin((i/WAVE_SIZE)*Math.PI*2)); drawWave(waveBuffer); updateSynthWave(waveBuffer); socket.emit('update_waveform',waveBuffer)});
         resetBtn.addEventListener('touchstart', e=>e.stopPropagation(),{passive:false});
 
-        // ADSR UI Manual Sync
         const slA=document.getElementById('adsr-a'), slD=document.getElementById('adsr-d'), slS=document.getElementById('adsr-s'), slR=document.getElementById('adsr-r');
         let lastAdsrSync = 0;
         const updateADSR=()=>{ 
@@ -761,7 +738,6 @@
             btn.addEventListener('touchstart', e=>e.stopPropagation(), {passive:false});
         });
 
-        // Swipe & Mouse Play
         let isPointerDown = false; let lastMoveNoteTime = 0; const MOVE_NOTE_INTERVAL = 100;
         function triggerNoteFromInput(normX, normY) {
             if (normX < 0 || normX > 1 || normY < 0 || normY > 1) return;
