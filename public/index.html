@@ -63,13 +63,23 @@
             background: rgba(0,0,0,0.6); border: 1px solid #333; border-bottom: 2px solid #333;
             color: #00ffcc; font-size: 10px; padding: 6px 14px; cursor: pointer; border-radius: 2px;
             transition: all 0.1s; font-family: monospace; text-shadow: 0 0 5px rgba(0,255,204,0.3);
-            touch-action: pan-x;
+            touch-action: manipulation; /* タップの遅延を防ぐ */
         }
         button:hover { background: rgba(0, 255, 204, 0.1); border-color: #00ffcc; }
         button.active { background: #00ffcc; color: #000; border-color: #00ffcc; box-shadow: 0 0 15px rgba(0,255,204,0.6); text-shadow: none; font-weight: bold; }
 
-        .scale-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; margin-top: 5px; height: 100%; overflow-y: auto; align-content: start; }
-        .scale-btn { padding: 8px 4px; font-size: 9px; text-align: left; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; touch-action: pan-x; border: 1px solid #333; background: rgba(0,0,0,0.3); box-sizing: border-box; }
+        /* スケールグリッドのスクロール修正 */
+        .scale-grid { 
+            display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; margin-top: 5px; height: 100%; 
+            overflow-y: auto; align-content: start; 
+            touch-action: pan-y; /* 縦スクロールを許可 */
+        }
+        .scale-btn { 
+            padding: 8px 4px; font-size: 9px; text-align: left; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
+            border: 1px solid #333; background: rgba(0,0,0,0.3); box-sizing: border-box; 
+            cursor: pointer;
+            touch-action: manipulation;
+        }
         .scale-btn.active { border-color: #00ffcc; background: rgba(0,255,204,0.2); color: white; box-shadow: 0 0 8px rgba(0,255,204,0.3); }
 
         #overlay {
@@ -107,9 +117,8 @@
             border: 1px solid #333;
         }
         .sensor-fill {
-            width: 100%; height: 0%; /* JSで制御するため初期値0 */
+            width: 100%; height: 0%;
             background: #00ffcc;
-            /* transition: height 0.1s; <--- ラグの原因になるため削除しJSで滑らかにする */
             box-shadow: 0 0 10px #00ffcc;
         }
         .target-btn {
@@ -145,7 +154,7 @@
         <span>PLAY INSIDE THE SQUARE</span>
     </div>
 
-    <div id="version-display">v1.2 - SMOOTH & INSTANT PLAY</div>
+    <div id="version-display">v1.3 - SYNC FIX & SCALE FIX</div>
 
     <button id="sensor-btn">SENSOR: OFF</button>
     
@@ -202,6 +211,7 @@
         <div class="panel-section">
             <div class="label">5. SCALE (MOOD)</div>
             <div class="scale-grid">
+                <button class="scale-btn" data-scale="MYSTERIOUS">MYSTERIOUS (DEFAULT)</button>
                 <button class="scale-btn active" data-scale="MINOR_PENTATONIC">MINOR PENTATONIC</button>
                 <button class="scale-btn" data-scale="MAJOR">MAJOR (BRIGHT)</button>
                 <button class="scale-btn" data-scale="MINOR">MINOR (DARK)</button>
@@ -238,14 +248,11 @@
         renderer.domElement.id = 'main-canvas';
         document.body.appendChild(renderer.domElement);
 
-        // ★ センサー可視化用のカーソルと変数をスムージング用に分離
         let sensorCursor;
-        // 現在値(current) と 目標値(target) を分けて管理し、animateで補間する
         let cursorTargetPos = { x: 0, y: 0 };
         let meterTargetVal = { x: 0, y: 0 };
         let meterCurrentVal = { x: 0, y: 0 };
 
-        // ジオメトリを作成
         const cursorGeo = new THREE.OctahedronGeometry(1, 0); 
         const cursorMat = new THREE.MeshBasicMaterial({ 
             color: 0x00ffcc, 
@@ -276,7 +283,6 @@
             playAreaMesh.position.y = playAreaOffsetY;
             scene.add(playAreaMesh);
 
-            // カーソルサイズの調整
             if(sensorCursor) {
                 const s = playAreaSize * 0.08;
                 sensorCursor.scale.set(s, s, s);
@@ -303,24 +309,19 @@
             requestAnimationFrame(animate);
             if(isStarted) drawEQ();
 
-            // ★ センサーカーソル & メーターのアニメーション (スムーズ化)
-            const lerpFactor = 0.2; // 0.1だと遅いので少し速める
+            const lerpFactor = 0.2;
             
             if(sensorCursor) {
                 sensorCursor.rotation.x += 0.01;
                 sensorCursor.rotation.y += 0.015;
-                
-                // 3Dカーソルの移動
                 const targetY = cursorTargetPos.y + playAreaOffsetY;
                 sensorCursor.position.x += (cursorTargetPos.x - sensorCursor.position.x) * lerpFactor;
                 sensorCursor.position.y += (targetY - sensorCursor.position.y) * lerpFactor;
             }
 
-            // メーター(DOM)の移動もここでJS制御する (CSS transitionは重い/カクつくため)
             meterCurrentVal.x += (meterTargetVal.x - meterCurrentVal.x) * lerpFactor;
             meterCurrentVal.y += (meterTargetVal.y - meterCurrentVal.y) * lerpFactor;
             
-            // DOM更新は負荷軽減のため値が変わっている時だけ行う
             if(Math.abs(meterTargetVal.x - meterCurrentVal.x) > 0.001) {
                 fillX.style.height = (meterCurrentVal.x * 100) + "%";
             }
@@ -372,6 +373,7 @@
         }
 
         const SCALE_DEFINITIONS = {
+            "MYSTERIOUS":       [0, 2, 3, 6, 7, 8, 11], // ★ ハンガリアンマイナーなど、サーバーのデフォルト定義
             "MINOR_PENTATONIC": [0, 3, 5, 7, 10], 
             "MAJOR":            [0, 2, 4, 5, 7, 9, 11],
             "MINOR":            [0, 2, 3, 5, 7, 8, 10],
@@ -387,7 +389,7 @@
             SCALES[name] = generateScale(intervals);
         }
         
-        let currentScaleName = "MINOR_PENTATONIC";
+        let currentScaleName = "MYSTERIOUS"; // 初期値をサーバーと合わせる
 
         async function initAudio() {
             if (isStarted) return;
@@ -404,6 +406,7 @@
             globalFilter = new Tone.Filter(4000, "lowpass", -12);
             panner = new Tone.Panner(0);
 
+            // ローカルに保存されている最新のEQ設定で初期化
             eqLow = new Tone.Filter({ type: "lowshelf", frequency: localEQ.low.freq, gain: localEQ.low.gain, rolloff: -12 });
             eqMid = new Tone.Filter({ type: "peaking", frequency: localEQ.mid.freq, gain: localEQ.mid.gain, Q: 2.5 });
             eqHigh = new Tone.Filter({ type: "highshelf", frequency: localEQ.high.freq, gain: localEQ.high.gain, rolloff: -12 });
@@ -423,6 +426,7 @@
                 envelope: localADSR
             }).connect(panner); 
 
+            // ローカルに保存されている最新の波形で初期化
             updateSynthWave(waveBuffer);
 
             isStarted = true;
@@ -451,7 +455,6 @@
         function applyAudioParam(target, val) {
             currentParamsValue[target] = val; 
             
-            // カーソル位置の目標値更新
             if (target === myTargets.x) cursorTargetPos.x = (val - 0.5) * playAreaSize;
             if (target === myTargets.y) cursorTargetPos.y = (val - 0.5) * playAreaSize;
 
@@ -468,7 +471,6 @@
             else if (target === 'VOL') {
                 const vol = (val * 60) - 60;
                 synth.volume.rampTo(vol, 0.1);
-                // UI更新
                 const volSlider = document.getElementById('vol-synth');
                 if(volSlider) volSlider.value = vol;
             } 
@@ -478,7 +480,6 @@
             else if (target === 'DECAY') {
                 const d = 0.1 + (val * 1.9);
                 synth.set({ envelope: { decay: d } });
-                // UI更新
                 const dSlider = document.getElementById('adsr-d');
                 if(dSlider) {
                     dSlider.value = d;
@@ -488,7 +489,6 @@
             else if (target === 'RELEASE') {
                 const r = 0.1 + (val * 4.9);
                 synth.set({ envelope: { release: r } });
-                // UI更新
                 const rSlider = document.getElementById('adsr-r');
                 if(rSlider) {
                     rSlider.value = r;
@@ -498,8 +498,6 @@
         }
 
         function updateSensorVisuals(target, val) {
-            // 自分が見ているメーターと同じターゲットなら動かす
-            // ★ここでは直接DOMを触らず、目標値(target)をセットするだけにする(animateで描画)
             if (myTargets.x === target) meterTargetVal.x = val;
             if (myTargets.y === target) meterTargetVal.y = val;
         }
@@ -584,6 +582,7 @@
         }
 
         // --- 受信イベント (全員同期) ---
+        // ★ 修正点: synthが存在しなくてもデータは必ず更新する
         
         socket.on('sync_all_params', (params) => {
             for (const [key, val] of Object.entries(params)) {
@@ -808,7 +807,7 @@
         const scaleBtns = document.querySelectorAll('.scale-btn');
         scaleBtns.forEach(btn => {
             btn.addEventListener('click', (e) => { e.stopPropagation(); socket.emit('update_scale', btn.dataset.scale); });
-            btn.addEventListener('touchstart', e=>e.stopPropagation(), {passive:false});
+            // touchstartでstopPropagationするとスクロールできなくなるため削除、CSS touch-actionで対応
         });
 
         // --- Swipe to Play ---
@@ -819,14 +818,19 @@
         function triggerNoteFromInput(normX, normY) {
             if (normX < 0 || normX > 1 || normY < 0 || normY > 1) return;
             const scaleNotes = SCALES[currentScaleName];
+            
+            // ★ 安全策: スケールが見つからない場合はデフォルトに戻す
+            if (!scaleNotes) {
+                console.error("Scale not found:", currentScaleName);
+                return; 
+            }
+
             const noteIndex = Math.floor((1 - normY) * scaleNotes.length);
             const note = scaleNotes[Math.min(noteIndex, scaleNotes.length - 1)];
             
-            // ★ Optimistic UI: サーバーの返答を待たずに、まずは自分の画面で即座に鳴らす
             const noteData = { note, duration: 0.5 + normX * 4.0, normX, normY, id: socket.id };
-            playAndVisualizeNote(noteData); // 自分用
+            playAndVisualizeNote(noteData); 
 
-            // サーバーへ送信 (他の人用)
             socket.emit('play_note', { note, duration: noteData.duration, normX, normY });
         }
 
@@ -835,6 +839,8 @@
             const target = e.target;
             if (['INPUT', 'BUTTON'].includes(target.tagName)) return;
             if (['wave-canvas','adsr-canvas','eq-canvas'].includes(target.id)) return;
+            // スケールボタンのコンテナ内なら無視
+            if (target.closest('.scale-grid')) return;
 
             const cX = e.touches ? e.touches[0].clientX : e.clientX;
             const cY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -872,7 +878,6 @@
         window.addEventListener('mousedown', onPointerDown); window.addEventListener('mousemove', onPointerMove); window.addEventListener('mouseup', onPointerUp);
         window.addEventListener('touchstart', onPointerDown, {passive: false}); window.addEventListener('touchmove', onPointerMove, {passive: false}); window.addEventListener('touchend', onPointerUp);
 
-        // ★ 音と映像を再生する共通関数
         function playAndVisualizeNote(data) {
             if (!synth) return;
             synth.triggerAttackRelease(data.note, data.duration);
@@ -895,7 +900,7 @@
             scene.add(mesh);
             visualObjects.push({ type: 'ring', mesh, startTime: Date.now(), duration: data.duration });
 
-            if (prevNotePos && !isAuto && isMe) { // 線は自分または連続した人だけ引く
+            if (prevNotePos && !isAuto && isMe) { 
                 const points = [prevNotePos.clone(), pos.clone()];
                 const geometry = new THREE.BufferGeometry().setFromPoints(points);
                 const material = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending });
@@ -907,16 +912,35 @@
         }
 
         socket.on('trigger_note', (data) => {
-            // ★ 自分のIDのイベントが返ってきた場合は無視する (既に playAndVisualizeNote で再生済みだから)
             if (data.id === socket.id) return;
             playAndVisualizeNote(data);
         });
 
-        socket.on('sync_waveform', d => { waveBuffer=d; resizeCanvases(); updateSynthWave(d); });
-        socket.on('sync_adsr', d => { localADSR=d; slA.value=d.attack; slD.value=d.decay; slS.value=d.sustain; slR.value=d.release; resizeCanvases(); if(synth)synth.set({envelope:d}); });
+        // ★ データ受信時: ローカル変数を即更新し、Canvasも再描画する (synthがなくても)
+        socket.on('sync_waveform', d => { 
+            waveBuffer = d; 
+            resizeCanvases(); 
+            if(synth) updateSynthWave(d); 
+        });
+        socket.on('sync_adsr', d => { 
+            localADSR = d; 
+            slA.value=d.attack; slD.value=d.decay; slS.value=d.sustain; slR.value=d.release; 
+            resizeCanvases(); 
+            if(synth) synth.set({envelope:d}); 
+        });
         socket.on('sync_mixer', d => updateMixer(d));
-        socket.on('sync_eq', d => { localEQ=d; resizeCanvases(); if(eqLow){ eqLow.frequency.value=d.low.freq; eqLow.gain.value=d.low.gain; eqMid.frequency.value=d.mid.freq; eqMid.gain.value=d.mid.gain; eqHigh.frequency.value=d.high.freq; eqHigh.gain.value=d.high.gain; } });
-        socket.on('sync_scale', (scaleName) => { currentScaleName = scaleName; scaleBtns.forEach(btn => { if(btn.dataset.scale === scaleName) btn.classList.add('active'); else btn.classList.remove('active'); }); });
+        socket.on('sync_eq', d => { 
+            localEQ = d; 
+            resizeCanvases(); 
+            if(eqLow){ eqLow.frequency.value=d.low.freq; eqLow.gain.value=d.low.gain; eqMid.frequency.value=d.mid.freq; eqMid.gain.value=d.mid.gain; eqHigh.frequency.value=d.high.freq; eqHigh.gain.value=d.high.gain; } 
+        });
+        socket.on('sync_scale', (scaleName) => { 
+            currentScaleName = scaleName; 
+            scaleBtns.forEach(btn => { 
+                if(btn.dataset.scale === scaleName) btn.classList.add('active'); 
+                else btn.classList.remove('active'); 
+            }); 
+        });
         socket.on('sync_auto', (data) => {
             localAuto = data;
             updateAutoUI();
