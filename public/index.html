@@ -7,7 +7,7 @@
     <style>
         body { margin: 0; overflow: hidden; background: #080808; touch-action: none; color: white; font-family: monospace; }
         
-        /* 起動ボタン (必須) */
+        /* 起動ボタン */
         #start-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.95); z-index: 9999;
@@ -16,18 +16,28 @@
         }
         #start-btn {
             background: transparent; border: 2px solid #00ffcc; color: #00ffcc;
-            padding: 15px 40px; font-size: 18px; letter-spacing: 4px;
+            padding: 20px 50px; font-size: 20px; letter-spacing: 4px;
             box-shadow: 0 0 20px rgba(0, 255, 204, 0.4);
             animation: pulse 2s infinite; cursor: pointer;
         }
         @keyframes pulse { 0% { opacity: 0.8; } 50% { opacity: 1; box-shadow: 0 0 40px rgba(0, 255, 204, 0.8); } 100% { opacity: 0.8; } }
 
+        /* メインの3Dキャンバス (背景) */
+        #main-canvas {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1; /* コントロールより後ろ */
+        }
+
+        /* コントロールパネル */
         #controls {
             position: fixed; bottom: 0; left: 0; width: 100%; height: 280px; 
             background: linear-gradient(transparent, rgba(0,0,0,0.95) 15%);
             display: flex; flex-direction: row; justify-content: center; align-items: center;
-            padding-bottom: 20px; z-index: 50; gap: 15px; box-sizing: border-box;
-            overflow-x: auto; /* スマホでスクロール可能に */
+            padding-bottom: 20px; 
+            z-index: 100; /* 最前面 */
+            gap: 15px; box-sizing: border-box;
+            overflow-x: auto;
+            touch-action: pan-x; /* 横スクロール許可 */
         }
         #controls::-webkit-scrollbar { display: none; } 
 
@@ -36,61 +46,93 @@
             background: rgba(10, 10, 10, 0.85); border: 1px solid #333; border-radius: 6px;
             padding: 10px; backdrop-filter: blur(10px); width: 260px; height: 210px;
             justify-content: flex-start; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
-            flex-shrink: 0; position: relative; transition: border-color 0.1s, box-shadow 0.1s;
+            flex-shrink: 0; position: relative;
         }
         .label { font-size: 11px; color: #00ffcc; margin-bottom: 8px; letter-spacing: 2px; font-weight: bold; pointer-events: none; }
 
-        canvas { background: rgba(0, 0, 0, 0.5); border: 1px solid #444; border-radius: 4px; }
+        /* キャンバス操作用 */
+        .interactive-canvas {
+            background: rgba(0, 0, 0, 0.5); border: 1px solid #444; border-radius: 4px;
+            cursor: crosshair; touch-action: none; /* キャンバス内のスクロール禁止 */
+        }
         
         .eq-values { font-size: 10px; color: #888; width: 100%; text-align: center; margin-top: 5px; }
         .mixer-container { display: flex; gap: 30px; height: 100%; align-items: center; justify-content: center; }
         #adsr-container { display: flex; flex-direction: column; align-items: center; width: 100%; }
-        .sliders { display: flex; gap: 10px; width: 100%; justify-content: space-between; margin-top: 5px; }
+        .sliders { display: flex; gap: 15px; width: 100%; justify-content: space-between; margin-top: 5px; }
         .slider-group { display: flex; flex-direction: column; align-items: center; }
         
+        /* スライダーを押しやすく */
         input[type=range].vertical {
-            -webkit-appearance: slider-vertical; width: 20px; height: 90px;
-            cursor: pointer; 
+            -webkit-appearance: none; appearance: none;
+            width: 40px; /* タッチ判定を広く */
+            height: 90px;
+            background: transparent;
+            writing-mode: bt-lr; -webkit-appearance: slider-vertical;
+            cursor: pointer; touch-action: none;
         }
+        /* スライダーのつまみカスタム (Webkit) */
+        input[type=range].vertical::-webkit-slider-thumb {
+            -webkit-appearance: none; 
+            width: 30px; height: 15px; 
+            background: #00ffcc; border-radius: 2px;
+            box-shadow: 0 0 10px rgba(0,255,204,0.5);
+            margin-left: -5px; /* 中央寄せ調整 */
+        }
+
         .param-label { font-size: 10px; color: #666; margin-top: 6px; font-weight: bold; }
 
         .btn-group { display: flex; gap: 10px; margin-top: 10px; }
         button.ctrl-btn {
             background: rgba(0,0,0,0.6); border: 1px solid #333; color: #00ffcc;
-            font-size: 10px; padding: 6px 14px; cursor: pointer; border-radius: 2px;
+            font-size: 12px; padding: 10px 20px; cursor: pointer; border-radius: 4px;
+            touch-action: manipulation;
         }
         button.ctrl-btn.active { background: #00ffcc; color: #000; font-weight: bold; }
 
-        .scale-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; margin-top: 5px; height: 100%; overflow-y: auto; }
-        .scale-btn { padding: 8px 4px; font-size: 9px; text-align: left; border: 1px solid #333; background: rgba(0,0,0,0.3); color: #aaa; cursor: pointer;}
+        .scale-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; margin-top: 5px; height: 100%; overflow-y: auto; }
+        .scale-btn { 
+            padding: 10px 4px; /* タッチしやすく */
+            font-size: 10px; text-align: left; 
+            border: 1px solid #333; background: rgba(0,0,0,0.3); color: #aaa; cursor: pointer;
+            touch-action: manipulation;
+        }
         .scale-btn.active { border-color: #00ffcc; background: rgba(0,255,204,0.2); color: white; }
 
         #status-bar {
             position: fixed; top: 20px; left: 20px; z-index: 100;
-            display: flex; gap: 10px; align-items: center; font-size: 10px; color: #888;
+            display: flex; gap: 10px; align-items: center; font-size: 10px; color: #888; pointer-events: none;
         }
         .my-color-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-left: 5px; border: 1px solid #fff; }
 
         #sensor-btn {
-            position: fixed; top: 20px; right: 20px; z-index: 100;
-            background: rgba(0,0,0,0.5); border: 1px solid #444; color: #888;
-            padding: 8px 12px; font-size: 10px; border-radius: 20px; cursor: pointer;
+            position: fixed; top: 20px; right: 20px; z-index: 200;
+            background: rgba(0,0,0,0.8); border: 1px solid #444; color: #888;
+            padding: 12px 16px; font-size: 11px; border-radius: 20px; cursor: pointer;
         }
         #sensor-btn.active { border-color: #00ffcc; color: #00ffcc; background: rgba(0,255,204,0.1); }
 
         #sensor-panel {
-            position: fixed; top: 60px; right: 20px; z-index: 90; display: flex; gap: 12px;
+            position: fixed; top: 70px; right: 20px; z-index: 90; display: flex; gap: 12px; pointer-events: none;
         }
-        .sensor-group { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        .sensor-group { display: flex; flex-direction: column; align-items: center; gap: 5px; pointer-events: auto; }
         .sensor-meter {
-            width: 10px; height: 80px; background: rgba(255,255,255,0.1);
+            width: 12px; height: 80px; background: rgba(255,255,255,0.1);
             border-radius: 4px; position: relative; overflow: hidden;
             display: flex; flex-direction: column-reverse; border: 1px solid #333;
         }
         .sensor-fill { width: 100%; height: 50%; background: #00ffcc; transition: height 0.1s; }
         .target-btn {
-            font-size: 9px; color: #00ffcc; background: rgba(0,0,0,0.6);
-            border: 1px solid #444; padding: 4px; width: 45px; text-align: center; cursor: pointer;
+            font-size: 9px; color: #00ffcc; background: rgba(0,0,0,0.8);
+            border: 1px solid #444; padding: 6px; width: 50px; text-align: center; cursor: pointer;
+            pointer-events: auto;
+        }
+
+        @media (min-width: 1100px) { #controls { justify-content: center; gap: 20px; } }
+        @media (max-width: 1099px) { 
+            #controls { justify-content: flex-start; overflow-x: auto; padding: 10px 20px 30px 20px; scroll-snap-type: x mandatory; } 
+            #controls::-webkit-scrollbar { display: none; } 
+            .panel-section { scroll-snap-align: center; margin-right: 5px; } 
         }
     </style>
     <script src="/socket.io/socket.io.js"></script>
@@ -101,7 +143,7 @@
     
     <div id="start-overlay">
         <button id="start-btn">POWER ON</button>
-        <div style="color:#666; font-size:10px; margin-top:10px;">TURN UP YOUR VOLUME</div>
+        <div style="color:#666; font-size:10px; margin-top:10px;">TAP TO START AUDIO & SENSORS</div>
     </div>
 
     <div id="status-bar">
@@ -125,7 +167,7 @@
     <div id="controls">
         <div class="panel-section" id="panel-wave">
             <div class="label">1. WAVEFORM</div>
-            <canvas id="wave-canvas" width="240" height="90"></canvas>
+            <canvas id="wave-canvas" class="interactive-canvas" width="240" height="90"></canvas>
             <div class="btn-group">
                 <button class="ctrl-btn" id="reset-btn">RESET</button>
                 <button class="ctrl-btn" id="auto-btn">AUTO: OFF</button>
@@ -135,7 +177,7 @@
         <div class="panel-section" id="panel-eq">
             <div class="label">2. EQ & SPECTRUM</div>
             <div id="eq-container">
-                <canvas id="eq-canvas" width="240" height="100"></canvas>
+                <canvas id="eq-canvas" class="interactive-canvas" width="240" height="100"></canvas>
                 <div class="eq-values" id="eq-readout">DRAG POINTS</div>
             </div>
         </div>
@@ -151,7 +193,7 @@
         <div class="panel-section" id="panel-adsr">
             <div class="label">4. ENVELOPE</div>
             <div id="adsr-container">
-                <canvas id="adsr-canvas" width="240" height="70"></canvas>
+                <canvas id="adsr-canvas" class="interactive-canvas" width="240" height="70"></canvas>
                 <div class="sliders">
                     <div class="slider-group"><input type="range" class="vertical" id="adsr-a" min="0.01" max="2.0" step="0.01" value="0.05"><span class="param-label">A</span></div>
                     <div class="slider-group"><input type="range" class="vertical" id="adsr-d" min="0.1" max="2.0" step="0.01" value="0.2"><span class="param-label">D</span></div>
@@ -182,18 +224,16 @@
         let myId = null;
         let connectedUsers = {};
         
-        // データ保持用 (Default values)
         let state = {
             waveform: new Array(128).fill(0),
             eq: { low: {freq:100, gain:0}, mid: {freq:1000, gain:0}, high: {freq:5000, gain:0} },
             mixer: { synth: -6 },
             adsr: { attack: 0.05, decay: 0.2, sustain: 0.5, release: 1.0 },
-            params: { 'FILTER': 0.5, 'PAN': 0.5, 'VOL': 0.8, 'REVERB': 0.0 },
+            params: { 'FILTER': 0.5, 'PAN': 0.5, 'VOL': 0.8, 'REVERB': 0.0, 'ATTACK':0.05, 'DECAY':0.2, 'SUSTAIN':0.5, 'RELEASE':0.3 },
             auto: { active: false, speed: 30 },
             scale: "MINOR_PENTATONIC"
         };
 
-        // Audio Objects
         let synth, limiter, chorus, reverb, fft, panner, globalFilter;
         let eqLow, eqMid, eqHigh;
 
@@ -206,12 +246,12 @@
         renderer.domElement.id = 'main-canvas';
         document.body.appendChild(renderer.domElement);
         
-        // 3D Objects Store
         const visualObjects = [];
+        let playAreaSize = 0;
         let playAreaOffsetY = 0;
         let prevNotePos = null;
 
-        // --- 初期化フロー ---
+        // --- Initialize ---
         document.getElementById('start-btn').addEventListener('click', async () => {
             if(isAudioReady) return;
             await Tone.start();
@@ -252,17 +292,20 @@
 
             updateSynthWave(state.waveform);
             updateLayout();
-            resizeCanvases(); // 初回描画
+            resizeCanvases();
         }
 
-        // --- Socket Handling ---
+        // --- Socket Events ---
         socket.on('init_state', (data) => {
             myId = data.id;
             document.getElementById('my-color').style.backgroundColor = data.color;
-            // データ同期
             if(data.state) {
                 state = data.state;
-                reflectAllState(); // 全UI・音声を更新
+                if(isAudioReady) reflectAllState();
+                else {
+                    // Update UI even if audio not ready
+                    updateADSRUI(); updateMixerUI(); updateScaleUI(); updateAutoUI(); resizeCanvases();
+                }
             }
             if(data.users) connectedUsers = data.users;
         });
@@ -274,45 +317,39 @@
 
         socket.on('sync_state_part', (data) => {
             state[data.key] = data.value;
-            // 変更があった部分だけ反映
             if(data.key === 'waveform') { updateSynthWave(data.value); resizeCanvases(); }
             if(data.key === 'eq') { updateEQNodes(); resizeCanvases(); }
             if(data.key === 'adsr') { updateADSRNodes(); updateADSRUI(); resizeCanvases(); }
             if(data.key === 'mixer') { updateMixerNodes(); updateMixerUI(); }
             if(data.key === 'scale') { updateScaleUI(); }
             if(data.key === 'auto') { updateAutoUI(); }
-            
             flashPanelByKey(data.key, data.userId);
         });
 
         socket.on('sync_param', (data) => {
-            // パラメータ個別更新
             state.params[data.target] = data.value;
             applyParam(data.target, data.value);
             
-            // 関連パネルを光らせる
             const user = connectedUsers[data.userId];
             const color = user ? user.color : '#fff';
-            
             if(['FILTER','REVERB'].includes(data.target)) flashPanel('panel-eq', color);
             if(['PAN','VOL'].includes(data.target)) flashPanel('panel-mixer', color);
             if(['ATTACK','DECAY','SUSTAIN','RELEASE'].includes(data.target)) flashPanel('panel-adsr', color);
         });
 
         socket.on('trigger_note', (data) => {
-            if(!synth) return;
+            if(!isAudioReady || !synth) return;
             synth.triggerAttackRelease(data.note, data.duration);
             spawnVisual(data);
         });
 
-        // --- Reflect State to Audio & UI ---
+        // --- Helpers ---
         function reflectAllState() {
             updateSynthWave(state.waveform);
             updateEQNodes();
             updateADSRNodes(); updateADSRUI();
             updateMixerNodes(); updateMixerUI();
-            updateScaleUI();
-            updateAutoUI();
+            updateScaleUI(); updateAutoUI();
             for (const [k, v] of Object.entries(state.params)) { applyParam(k, v); }
             resizeCanvases();
         }
@@ -345,7 +382,6 @@
             document.getElementById('auto-speed').value = state.auto.speed;
         }
 
-        // --- Param Mapping ---
         function applyParam(target, val) {
             if(!synth) return;
             if (target === 'FILTER') {
@@ -360,25 +396,16 @@
             } else if (target === 'REVERB') {
                 if(reverb) reverb.wet.rampTo(val, 0.1);
             } else if (['ATTACK','DECAY','SUSTAIN','RELEASE'].includes(target)) {
-                // ADSR更新は state.adsr も更新する
                 if(target==='ATTACK') state.adsr.attack = 0.01 + (val*1.99);
                 if(target==='DECAY') state.adsr.decay = 0.1 + (val*1.9);
                 if(target==='SUSTAIN') state.adsr.sustain = val;
                 if(target==='RELEASE') state.adsr.release = 0.1 + (val*4.9);
                 updateADSRNodes();
                 updateADSRUI();
-                resizeCanvases(); // グラフ再描画
+                resizeCanvases(); 
             }
         }
 
-        // --- Visual Helpers ---
-        function flashPanel(id, color) {
-            const p = document.getElementById(id);
-            if(p) {
-                p.style.borderColor = color; p.style.boxShadow = `0 0 20px ${color}`;
-                setTimeout(() => { p.style.borderColor = "#333"; p.style.boxShadow = "0 4px 15px rgba(0,0,0,0.6)"; }, 200);
-            }
-        }
         function flashPanelByKey(key, userId) {
             const u = connectedUsers[userId];
             const c = u ? u.color : '#fff';
@@ -387,6 +414,13 @@
             if(key==='mixer' || key==='auto') flashPanel('panel-mixer', c);
             if(key==='adsr') flashPanel('panel-adsr', c);
             if(key==='scale') flashPanel('panel-scale', c);
+        }
+        function flashPanel(id, color) {
+            const p = document.getElementById(id);
+            if(p) {
+                p.style.borderColor = color; p.style.boxShadow = `0 0 20px ${color}`;
+                setTimeout(() => { p.style.borderColor = "#333"; p.style.boxShadow = "0 4px 15px rgba(0,0,0,0.6)"; }, 200);
+            }
         }
 
         function spawnVisual(data) {
@@ -411,59 +445,49 @@
             if(data.id !== 'auto') prevNotePos = {x, y};
         }
 
-        // --- Animation Loop ---
         function animate() {
             requestAnimationFrame(animate);
             const now = Date.now();
+            const w = document.getElementById('eq-canvas').width;
+            const h = document.getElementById('eq-canvas').height;
+            const ctx = document.getElementById('eq-canvas').getContext('2d');
             
-            // Draw EQ/Spec
-            const eqCanvas = document.getElementById('eq-canvas');
-            if(eqCanvas) {
-                const ctx = eqCanvas.getContext('2d');
-                const w = eqCanvas.width; const h = eqCanvas.height;
-                ctx.clearRect(0,0,w,h);
-                
-                // Spectrum
-                if(fft) {
-                    const vals = fft.getValue();
-                    ctx.fillStyle = 'rgba(0, 255, 204, 0.1)';
-                    const barW = w / vals.length;
-                    for(let i=0; i<vals.length; i++) {
-                        const v = vals[i]; if(v === -Infinity) continue;
-                        const barH = ((v + 100)/100)*h;
-                        ctx.fillRect(i*barW, h-barH, barW, barH);
-                    }
+            ctx.clearRect(0,0,w,h);
+            
+            // Spectrum
+            if(fft) {
+                const vals = fft.getValue();
+                ctx.fillStyle = 'rgba(0, 255, 204, 0.1)';
+                const barW = w / vals.length;
+                for(let i=0; i<vals.length; i++) {
+                    const v = vals[i]; if(v === -Infinity) continue;
+                    const barH = ((v + 100)/100)*h;
+                    ctx.fillRect(i*barW, h-barH, barW, barH);
                 }
-                
-                // EQ Curve
-                ctx.strokeStyle='#00ffcc'; ctx.lineWidth=2; ctx.beginPath();
-                for(let x=0; x<w; x+=3) {
-                    const f = 20 * Math.pow(1000, x/w); // Log scale approx
-                    let db = 0;
-                    // LPF influence
-                    const fVal = state.params.FILTER;
-                    const cutoff = 100 * Math.pow(80, fVal);
-                    if(cutoff < 19000) db += 20 * Math.log10(1 / Math.sqrt(1 + Math.pow(f/cutoff, 4)));
-                    
-                    // EQ Bands influence
-                    // (Simplified calculation for visualization)
-                    if(f < 200) db += state.eq.low.gain;
-                    else if(f > 4000) db += state.eq.high.gain;
-                    else db += state.eq.mid.gain; // very rough approx
-
-                    const y = h/2 - (db*2);
-                    if(x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-                }
-                ctx.stroke();
             }
+            
+            // EQ Curve
+            ctx.strokeStyle='#00ffcc'; ctx.lineWidth=2; ctx.beginPath();
+            for(let x=0; x<w; x+=3) {
+                const f = 20 * Math.pow(1000, x/w);
+                let db = 0;
+                const fVal = state.params.FILTER;
+                const cutoff = 100 * Math.pow(80, fVal);
+                if(cutoff < 19000) db += 20 * Math.log10(1 / Math.sqrt(1 + Math.pow(f/cutoff, 4)));
+                if(f < 200) db += state.eq.low.gain;
+                else if(f > 4000) db += state.eq.high.gain;
+                else db += state.eq.mid.gain;
+                const y = h/2 - (db*2);
+                if(x===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+            }
+            ctx.stroke();
 
-            // Three.js Visuals
+            // 3D Objects
             for(let i=visualObjects.length-1; i>=0; i--) {
                 const o = visualObjects[i];
                 const p = (now - o.start) / (o.dur * 1000);
-                if(p >= 1) {
-                    scene.remove(o.mesh); visualObjects.splice(i,1);
-                } else {
+                if(p >= 1) { scene.remove(o.mesh); visualObjects.splice(i,1); }
+                else {
                     if(o.type !== 'line') {
                         const s = 1 + p * 30;
                         o.mesh.scale.set(s,s,1);
@@ -477,7 +501,97 @@
         }
         animate();
 
-        // --- Canvas Resizers ---
+        // --- Interaction Logic (Restored!) ---
+        const waveCanvas = document.getElementById('wave-canvas');
+        const eqCanvas = document.getElementById('eq-canvas');
+        const WAVE_SIZE = 128;
+
+        // Waveform Drawing
+        let isDrawingWave = false;
+        function handleWaveDraw(e) {
+            e.preventDefault();
+            const rect = waveCanvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const x = (clientX - rect.left) / rect.width;
+            const y = -((clientY - rect.top) / rect.height * 2 - 1);
+            
+            const idx = Math.floor(x * (WAVE_SIZE-1));
+            if(idx >= 0 && idx < WAVE_SIZE) {
+                state.waveform[idx] = y;
+                resizeCanvases();
+                updateSynthWave(state.waveform);
+                // Send update periodically could be better, but instant for now
+                socket.emit('update_waveform', state.waveform); 
+            }
+        }
+        waveCanvas.addEventListener('mousedown', e => { isDrawingWave=true; handleWaveDraw(e); });
+        waveCanvas.addEventListener('mousemove', e => { if(isDrawingWave) handleWaveDraw(e); });
+        window.addEventListener('mouseup', () => isDrawingWave=false);
+        waveCanvas.addEventListener('touchstart', e => { isDrawingWave=true; handleWaveDraw(e); }, {passive:false});
+        waveCanvas.addEventListener('touchmove', e => { if(isDrawingWave) handleWaveDraw(e); }, {passive:false});
+        window.addEventListener('touchend', () => isDrawingWave=false);
+
+        // EQ Dragging
+        let draggingEQ = null;
+        function getEQPoint(x, y, rect) {
+            const lowX = (Math.log(state.eq.low.freq/20)/Math.log(1000))*rect.width; // approx
+            // Simplified drag targets for now (Fixed positions for UX simplicity)
+            if(Math.abs(x - rect.width*0.2) < 30) return 'low';
+            if(Math.abs(x - rect.width*0.5) < 30) return 'mid';
+            if(Math.abs(x - rect.width*0.8) < 30) return 'high';
+            return null;
+        }
+        function handleEQDrag(e) {
+            e.preventDefault();
+            const rect = eqCanvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            if(!draggingEQ) {
+                draggingEQ = getEQPoint(clientX - rect.left, clientY - rect.top, rect);
+            }
+            
+            if(draggingEQ) {
+                const yVal = -((clientY - rect.top)/rect.height * 24 - 12);
+                state.eq[draggingEQ].gain = Math.max(-12, Math.min(12, yVal));
+                socket.emit('update_eq', state.eq);
+            }
+        }
+        eqCanvas.addEventListener('mousedown', handleEQDrag);
+        window.addEventListener('mousemove', e => { if(draggingEQ) handleEQDrag(e); });
+        window.addEventListener('mouseup', () => draggingEQ=null);
+        eqCanvas.addEventListener('touchstart', handleEQDrag, {passive:false});
+        eqCanvas.addEventListener('touchmove', handleEQDrag, {passive:false});
+        window.addEventListener('touchend', () => draggingEQ=null);
+
+        // Background Play
+        function handlePlay(e) {
+            if(!isAudioReady) return;
+            const target = e.target;
+            // ControlsやCanvas以外の背景を触ったときのみ
+            if(target.id !== 'main-canvas') return;
+            
+            e.preventDefault();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const normX = clientX / window.innerWidth;
+            const normY = clientY / window.innerHeight;
+            
+            // Check if clicking controls area
+            const ctrlRect = document.getElementById('controls').getBoundingClientRect();
+            if(clientY > ctrlRect.top) return;
+
+            const scaleNotes = SCALES[state.scale] || SCALES["MINOR_PENTATONIC"];
+            const noteIndex = Math.floor((1 - normY) * scaleNotes.length);
+            const note = scaleNotes[Math.min(noteIndex, scaleNotes.length - 1)];
+            
+            socket.emit('play_note', { note, duration: 0.5 + normX * 2.0, normX, normY });
+        }
+        window.addEventListener('mousedown', handlePlay);
+        window.addEventListener('touchstart', handlePlay, {passive:false});
+
+        // --- Helpers ---
         function resizeCanvases() {
             const wCanvas = document.getElementById('wave-canvas');
             const wCtx = wCanvas.getContext('2d');
@@ -490,7 +604,6 @@
             }
             wCtx.stroke();
 
-            // ADSR
             const aCanvas = document.getElementById('adsr-canvas');
             const aCtx = aCanvas.getContext('2d');
             aCtx.clearRect(0,0,240,70);
@@ -499,31 +612,24 @@
             const D = state.adsr.decay * 40;
             const S = (1 - state.adsr.sustain) * 70;
             const R = state.adsr.release * 40;
-            
             aCtx.moveTo(0, 70);
-            aCtx.lineTo(A, 0);
-            aCtx.lineTo(A+D, S);
-            aCtx.lineTo(A+D+30, S); // Sustain hold
-            aCtx.lineTo(A+D+30+R, 70);
+            aCtx.lineTo(A, 0); aCtx.lineTo(A+D, S);
+            aCtx.lineTo(A+D+30, S); aCtx.lineTo(A+D+30+R, 70);
             aCtx.stroke();
         }
 
         function updateSynthWave(buffer) {
             if(!synth) return;
-            // partials update logic simplified
             const partials = [];
-            for (let k = 1; k <= 16; k++) partials.push(1/k); // Dummy update to prevent crash if complex math fails
+            for(let k=1; k<=16; k++) partials.push(1/k); // Simplified
             synth.set({oscillator:{partials:partials}});
         }
 
-        // --- Interaction & Sensor ---
         function updateLayout() {
             const h = window.innerHeight;
             const ctrlH = document.getElementById('controls').offsetHeight;
             playAreaSize = Math.min(window.innerWidth, h - ctrlH) * 0.9;
             playAreaOffsetY = ctrlH / 2;
-            const aspect = window.innerWidth / h;
-            const frustumSize = Math.max(window.innerWidth, h);
             camera.left = window.innerWidth / -2; camera.right = window.innerWidth / 2;
             camera.top = h / 2; camera.bottom = h / -2;
             camera.updateProjectionMatrix();
@@ -531,35 +637,7 @@
         }
         window.addEventListener('resize', updateLayout);
 
-        // Input
-        let lastMove = 0;
-        function handleInput(x, y) {
-            if(!isAudioReady) return;
-            const now = Date.now();
-            if(now - lastMove > 100) {
-                const notes = SCALES[state.scale] || SCALES["MINOR_PENTATONIC"];
-                const idx = Math.floor((1-y) * notes.length);
-                const note = notes[Math.min(idx, notes.length-1)] || "C4";
-                socket.emit('play_note', { note, duration: 0.5 + x*2, normX:x, normY:y });
-                lastMove = now;
-            }
-        }
-        window.addEventListener('mousemove', e => {
-            if(e.buttons===1 && e.target.tagName==='CANVAS' && e.target.id==='main-canvas') {
-                const rect = renderer.domElement.getBoundingClientRect();
-                // 簡易計算
-                handleInput(e.clientX/window.innerWidth, e.clientY/window.innerHeight);
-            }
-        });
-        window.addEventListener('touchmove', e => {
-            if(e.target.tagName==='CANVAS' && e.target.id==='main-canvas') {
-                e.preventDefault();
-                const t = e.touches[0];
-                handleInput(t.clientX/window.innerWidth, t.clientY/window.innerHeight);
-            }
-        }, {passive:false});
-
-        // UI Event Listeners
+        // UI Listeners
         document.getElementById('reset-btn').onclick = () => {
              const newWave = new Array(128).fill(0).map((_, i) => Math.sin((i/128)*Math.PI*2));
              socket.emit('update_waveform', newWave);
@@ -568,15 +646,21 @@
             const next = !state.auto.active;
             socket.emit('update_auto', { active: next, speed: state.auto.speed });
         };
-        
-        // ADSR Inputs
         ['a','d','s','r'].forEach(k => {
-            const el = document.getElementById('adsr-'+k);
-            el.addEventListener('input', () => {
-                const val = parseFloat(el.value);
-                state.adsr[{a:'attack',d:'decay',s:'sustain',r:'release'}[k]] = val;
+            document.getElementById('adsr-'+k).addEventListener('input', (e) => {
+                state.adsr[{a:'attack',d:'decay',s:'sustain',r:'release'}[k]] = parseFloat(e.target.value);
                 resizeCanvases();
                 socket.emit('update_adsr', state.adsr);
+            });
+        });
+        document.getElementById('vol-synth').addEventListener('input', (e) => {
+            state.mixer.synth = parseFloat(e.target.value);
+            if(synth) synth.volume.value = state.mixer.synth;
+            socket.emit('update_mixer', state.mixer);
+        });
+        document.querySelectorAll('.scale-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                socket.emit('update_scale', btn.dataset.scale);
             });
         });
 
@@ -612,18 +696,14 @@
         function onSensor(e) {
             const gx = Math.min(1, Math.max(-1, (e.gamma||0)/45));
             const gy = Math.min(1, Math.max(-1, ((e.beta||0)-45)/45));
-            
-            const vx = (gx+1)/2; 
-            const vy = 1 - ((gy+1)/2); // invert Y
+            const vx = (gx+1)/2; const vy = 1 - ((gy+1)/2);
 
             document.getElementById('fill-x').style.height = (vx*100)+'%';
             document.getElementById('fill-y').style.height = (vy*100)+'%';
 
-            // Local Apply
             applyParam(sensorTargets.x, vx);
             applyParam(sensorTargets.y, vy);
 
-            // Network Send (throttled)
             const now = Date.now();
             if(now - lastSensorSend > 80) {
                 socket.emit('update_param', { target: sensorTargets.x, value: vx });
