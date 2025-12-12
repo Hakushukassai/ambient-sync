@@ -72,6 +72,14 @@
         .scale-btn { padding: 8px 4px; font-size: 9px; text-align: left; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; touch-action: pan-x; border: 1px solid #333; background: rgba(0,0,0,0.3); box-sizing: border-box; }
         .scale-btn.active { border-color: #00ffcc; background: rgba(0,255,204,0.2); color: white; box-shadow: 0 0 8px rgba(0,255,204,0.3); }
 
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.92); z-index: 999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            cursor: pointer; letter-spacing: 3px;
+        }
+        #overlay span { margin-top: 15px; font-size: 10px; color: #888; letter-spacing: 1px; }
+
         /* ステータスバー */
         #status-bar {
             position: fixed; top: 20px; left: 20px; z-index: 100;
@@ -209,6 +217,12 @@
         let myColor = '#00ffcc';
         let connectedUsers = {};
         
+        // ★グローバルパラメータ管理用
+        let localParams = {
+            'FILTER': 0.5, 'PAN': 0.5, 'VOL': 0.8, 'REVERB': 0.0,
+            'ATTACK': 0.05, 'DECAY': 0.1, 'SUSTAIN': 0.5, 'RELEASE': 0.3
+        };
+
         let synth, limiter, chorus, reverb, fft, panner; 
         let eqLow, eqMid, eqHigh, globalFilter; 
 
@@ -291,7 +305,6 @@
         let localADSR = { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1.5 };
         let localMixer = { synth: -4 };
         let localEQ = { low: {freq:100, gain:4}, mid: {freq:1000, gain:-2}, high: {freq:5000, gain:-6} };
-        
         let localAuto = { active: false, speed: 30 };
 
         const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
@@ -326,7 +339,6 @@
         
         let currentScaleName = "MINOR_PENTATONIC";
 
-        // ★ 音声初期化 (どこ触ってもOK)
         async function initAudio() {
             if (isStarted) return;
             await Tone.start();
@@ -366,14 +378,13 @@
             updateLayout();
         }
         
-        // ★ 画面全体のどこを触ってもオーディオ開始
         ['click', 'touchstart', 'keydown'].forEach(evt => {
             window.addEventListener(evt, () => {
                 if(!isStarted) initAudio();
             }, { once: true });
         });
 
-        // --- Visual Feedback Function ---
+        // --- Visual Feedback ---
         function flashPanel(panelId, color) {
             const panel = document.getElementById(panelId);
             if(panel) {
@@ -386,7 +397,7 @@
             }
         }
 
-        // --- Sensor Logic & Sync & Mapping ---
+        // --- Sensor Logic & Sync ---
         const sensorBtn = document.getElementById('sensor-btn');
         const fillX = document.getElementById('fill-x');
         const fillY = document.getElementById('fill-y');
@@ -402,8 +413,9 @@
 
         function applyAudioParam(target, val) {
             if (!synth) return;
+            // ローカルパラメータを更新
+            localParams[target] = val;
 
-            // X軸系
             if (target === 'FILTER') {
                 const freq = 100 * Math.pow(80, val); 
                 if(globalFilter) globalFilter.frequency.rampTo(freq, 0.1);
@@ -418,7 +430,6 @@
                 const volSlider = document.getElementById('vol-synth');
                 if(volSlider) volSlider.value = vol;
             } 
-            // Y軸系
             else if (target === 'REVERB') {
                 if(reverb) reverb.wet.rampTo(val, 0.1);
             } 
@@ -533,6 +544,7 @@
             document.getElementById('my-color').style.backgroundColor = myColor;
             
             if(data.params) {
+                localParams = data.params; // Update local state
                 for (const [key, val] of Object.entries(data.params)) {
                     applyAudioParam(key, val);
                 }
@@ -553,6 +565,7 @@
         });
 
         socket.on('sync_all_params', (params) => {
+            localParams = params;
             for (const [key, val] of Object.entries(params)) {
                 applyAudioParam(key, val);
             }
@@ -626,13 +639,23 @@
         function freqToX(freq, width) { return (Math.log(freq / minFreq) / Math.log(maxFreq / minFreq)) * width; }
         function yToDb(y, height) { return 12 - (y / height) * 24; }
         function dbToY(db, height) { return height/2 - (db/24) * height; }
+        
+        // ★修正: getEQResponseにローカルパラメータのFILTER値を適用
         function getEQResponse(f) {
             let db = 0;
             if (localEQ.low.gain !== 0) db += localEQ.low.gain * (1 / (1 + Math.pow(f / localEQ.low.freq, 4)));
             if (localEQ.high.gain !== 0) db += localEQ.high.gain * (1 / (1 + Math.pow(localEQ.high.freq / f, 4)));
             if (localEQ.mid.gain !== 0) { const Q=2.5; db += localEQ.mid.gain * Math.exp( -Math.pow( (Math.log(f/localEQ.mid.freq)) * Q, 2 ) ); }
+            
+            // Add Global LowPass Filter Curve
+            const filterVal = localParams['FILTER'] !== undefined ? localParams['FILTER'] : 1.0;
+            const cutoff = 100 * Math.pow(80, filterVal);
+            const attenuation = 20 * Math.log10(1 / Math.sqrt(1 + Math.pow(f / cutoff, 4)));
+            db += attenuation;
+
             return db;
         }
+        
         let draggingPoint = null;
         let lastEqSyncTime = 0;
         
