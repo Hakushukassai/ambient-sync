@@ -51,45 +51,31 @@ let currentEQ = {
     high: { freq: 5000, gain: -6 }
 };
 let currentScaleName = "MYSTERIOUS";
+let autoPlayState = { active: false, speed: 30 };
+let autoPlayTimeout = null;
 
-// ★オート演奏の状態
-let autoPlayState = {
-    active: false,
-    speed: 30, 
+// ★新機能: センサー値の共有 (0.0 ~ 1.0)
+let currentSensor = {
+    filter: 0.5, // 初期値（真ん中）
+    reverb: 0.0  // 初期値（ドライ）
 };
-let autoPlayTimeout = null; // IntervalからTimeoutに変更
 
-// ★ランダムループ処理
+// ランダムループ処理
 function scheduleNextAutoNote() {
-    // 前の予約があれば消す
     if (autoPlayTimeout) clearTimeout(autoPlayTimeout);
-    
-    // オフなら終了
     if (!autoPlayState.active) return;
-
-    // 1. 音を鳴らす
     playAutoNote();
-
-    // 2. 次の時間を計算する（ランダム性を持たせる）
-    
-    // ベースの間隔: 8000ms(遅) 〜 150ms(速)
     const slowLimit = 8000;
     const fastLimit = 150;
     const baseInterval = slowLimit - ((autoPlayState.speed / 100) * (slowLimit - fastLimit));
-    
-    // ★ゆらぎ係数: 0.2倍(速い連打) 〜 1.8倍(溜め) の間でランダム
     const randomFactor = 0.2 + (Math.random() * 1.6); 
-    
     const nextDelay = baseInterval * randomFactor;
-
-    // 次の予約を入れる
     autoPlayTimeout = setTimeout(scheduleNextAutoNote, nextDelay);
 }
 
 function playAutoNote() {
     const normX = Math.random();
     const normY = Math.random();
-
     const scaleNotes = SCALES[currentScaleName] || SCALES["MINOR_PENTATONIC"];
     const noteIndex = Math.floor((1 - normY) * scaleNotes.length);
     const note = scaleNotes[Math.min(noteIndex, scaleNotes.length - 1)];
@@ -112,6 +98,7 @@ io.on('connection', (socket) => {
     socket.emit('sync_eq', currentEQ); 
     socket.emit('sync_scale', currentScaleName);
     socket.emit('sync_auto', autoPlayState);
+    socket.emit('sync_sensor', currentSensor); // ★センサー初期値送信
 
     socket.on('play_note', (data) => {
         io.emit('trigger_note', { ...data, id: socket.id });
@@ -150,19 +137,23 @@ io.on('connection', (socket) => {
         io.emit('sync_scale', currentScaleName);
     });
 
-    // オート演奏の制御
     socket.on('update_auto', (data) => {
         const wasActive = autoPlayState.active;
         autoPlayState = data;
         io.emit('sync_auto', autoPlayState);
-        
-        // OFF -> ON になった時、または ONのまま更新された時
         if (autoPlayState.active && !wasActive) {
             scheduleNextAutoNote();
         } else if (!autoPlayState.active) {
             if (autoPlayTimeout) clearTimeout(autoPlayTimeout);
         }
-        // ON -> ON (スライダー操作中) は、今のタイマーを維持して次のループから新速度適用
+    });
+
+    // ★センサー更新イベント
+    socket.on('update_sensor', (data) => {
+        currentSensor = data;
+        // 自分以外の全員に送信（broadcast）して負荷を下げる
+        // ※自分はローカルで即時反映済みのため
+        socket.broadcast.emit('sync_sensor', currentSensor);
     });
 
     socket.on('disconnect', () => {
