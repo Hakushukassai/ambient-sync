@@ -3,19 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Synth Master Sync</title>
+    <title>Synth Master Sync v1.9</title>
     <style>
         body { margin: 0; overflow: hidden; background: #080808; touch-action: none; color: white; font-family: monospace; }
         
         #controls {
             position: fixed; bottom: 0; left: 0; width: 100%; height: 280px; 
             background: linear-gradient(transparent, rgba(0,0,0,0.95) 15%);
-            display: flex; flex-direction: row; justify-content: center; align-items: center;
+            display: flex; flex-direction: row; justify-content: flex-start; align-items: center;
             padding-bottom: 20px; z-index: 50; gap: 15px; box-sizing: border-box;
             overflow-x: auto; touch-action: pan-x; -webkit-overflow-scrolling: touch;
-            justify-content: flex-start;
         }
         #controls::-webkit-scrollbar { display: none; }
+        
+        @media (min-width: 1100px) { 
+            #controls { justify-content: center; overflow-x: visible; } 
+        }
 
         .panel-section {
             display: flex; flex-direction: column; align-items: center;
@@ -23,55 +26,41 @@
             padding: 10px;
             backdrop-filter: blur(10px); width: 260px; height: 210px;
             justify-content: flex-start; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
-            flex-shrink: 0; position: relative; 
-            scroll-snap-align: center; margin-right: 5px;
+            flex-shrink: 0; position: relative; scroll-snap-align: center;
         }
-        
-        @media (min-width: 1100px) { 
-            #controls { justify-content: center; overflow-x: visible; } 
-            .panel-section { margin-right: 0; }
-        }
-
         .panel-section:hover { border-color: #555; box-shadow: 0 0 20px rgba(0, 255, 204, 0.1); }
-        .panel-section::after {
-            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px;
-            background: linear-gradient(90deg, transparent, #00ffcc, transparent); opacity: 0.6;
-        }
+        .panel-section::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: linear-gradient(90deg, transparent, #00ffcc, transparent); opacity: 0.6; }
         
-        .label { font-size: 11px; color: #00ffcc; margin-bottom: 8px; letter-spacing: 2px; text-shadow: 0 0 8px rgba(0,255,204,0.6); font-weight: bold; text-transform: uppercase; pointer-events: none; }
+        .label { font-size: 11px; color: #00ffcc; margin-bottom: 8px; letter-spacing: 2px; font-weight: bold; text-transform: uppercase; pointer-events: none; }
 
-        #wave-canvas, #eq-canvas, #adsr-canvas { background: rgba(0, 0, 0, 0.5); border: 1px solid #444; border-radius: 4px; box-shadow: inset 0 0 15px rgba(0,0,0,0.8); width: 240px; touch-action: none; }
-        
+        #wave-canvas, #eq-canvas, #adsr-canvas { background: rgba(0, 0, 0, 0.5); border: 1px solid #444; border-radius: 4px; width: 240px; touch-action: none; }
         #wave-canvas { height: 90px; cursor: crosshair; }
         #eq-canvas { height: 100px; cursor: default; }
         #adsr-canvas { height: 70px; }
 
-        .eq-values { font-size: 10px; color: #888; width: 100%; text-align: center; margin-top: 5px; font-family: monospace; pointer-events: none; }
+        .eq-values { font-size: 10px; color: #888; width: 100%; text-align: center; margin-top: 5px; pointer-events: none; }
         .mixer-container { display: flex; gap: 30px; height: 100%; align-items: center; justify-content: center; }
         #adsr-container { display: flex; flex-direction: column; align-items: center; width: 100%; }
         .sliders { display: flex; gap: 10px; width: 100%; justify-content: space-between; margin-top: 5px; }
-        .slider-group { display: flex; flex-direction: column; align-items: center; position: relative; }
+        .slider-group { display: flex; flex-direction: column; align-items: center; }
         
         input[type=range].vertical {
             -webkit-appearance: none; appearance: none; width: 30px; height: 100px;
-            background: transparent; outline: none; writing-mode: bt-lr; -webkit-appearance: slider-vertical;
-            cursor: pointer; position: relative; z-index: 2;
+            background: transparent; -webkit-appearance: slider-vertical;
+            cursor: pointer; z-index: 2;
             background: linear-gradient(to right, transparent 13px, #222 13px, #222 17px, transparent 17px);
-            touch-action: none; 
         }
         input[type=range].vertical::-webkit-slider-thumb {
             -webkit-appearance: none; width: 28px; height: 14px; background: #000; 
             border: 1px solid #00ffcc; border-radius: 2px; box-shadow: 0 0 8px rgba(0,255,204,0.4);
-            margin-top: 0; position: relative; z-index: 3;
         }
-        .param-label { font-size: 10px; color: #666; margin-top: 6px; font-weight: bold; letter-spacing: 1px; pointer-events: none; }
+        .param-label { font-size: 10px; color: #666; margin-top: 6px; font-weight: bold; pointer-events: none; }
 
         .btn-group { display: flex; gap: 10px; margin-top: 10px; }
         button {
             background: rgba(0,0,0,0.6); border: 1px solid #333; border-bottom: 2px solid #333;
             color: #00ffcc; font-size: 10px; padding: 6px 14px; cursor: pointer; border-radius: 2px;
-            transition: all 0.1s; font-family: monospace; text-shadow: 0 0 5px rgba(0,255,204,0.3);
-            touch-action: manipulation;
+            font-family: monospace; text-shadow: 0 0 5px rgba(0,255,204,0.3); touch-action: manipulation;
         }
         button:hover { background: rgba(0, 255, 204, 0.1); border-color: #00ffcc; }
         button.active { background: #00ffcc; color: #000; border-color: #00ffcc; box-shadow: 0 0 15px rgba(0,255,204,0.6); text-shadow: none; font-weight: bold; }
@@ -79,15 +68,12 @@
         .scale-grid { 
             display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; margin-top: 5px; height: 100%; 
             overflow-y: auto; align-content: start; 
-            touch-action: pan-y; 
         }
         .scale-btn { 
             padding: 8px 4px; font-size: 9px; text-align: left; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
-            border: 1px solid #333; background: rgba(0,0,0,0.3); box-sizing: border-box; 
-            cursor: pointer;
-            touch-action: manipulation; user-select: none;
+            border: 1px solid #333; background: rgba(0,0,0,0.3); 
         }
-        .scale-btn.active { border-color: #00ffcc; background: rgba(0,255,204,0.2); color: white; box-shadow: 0 0 8px rgba(0,255,204,0.3); }
+        .scale-btn.active { border-color: #00ffcc; background: rgba(0,255,204,0.2); color: white; }
 
         #overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -100,14 +86,20 @@
         #sensor-btn {
             position: fixed; top: 20px; right: 20px; z-index: 100;
             background: rgba(0,0,0,0.5); border: 1px solid #444; color: #888;
-            padding: 8px 12px; font-size: 10px; border-radius: 20px;
-            cursor: pointer;
+            padding: 8px 12px; font-size: 10px; border-radius: 20px; cursor: pointer;
         }
         #sensor-btn.active { border-color: #00ffcc; color: #00ffcc; background: rgba(0,255,204,0.1); }
 
+        /* MODE TOGGLE */
+        #mode-btn {
+            position: fixed; top: 20px; left: 20px; z-index: 100;
+            background: rgba(0,0,0,0.5); border: 1px solid #444; color: #888;
+            padding: 8px 12px; font-size: 10px; border-radius: 20px; cursor: pointer;
+        }
+        #mode-btn.physics { border-color: #ff00cc; color: #ff00cc; background: rgba(255,0,204,0.1); box-shadow: 0 0 10px rgba(255,0,204,0.2); }
+
         #sensor-panel {
-            position: fixed; top: 60px; right: 20px; z-index: 90;
-            display: flex; gap: 12px;
+            position: fixed; top: 60px; right: 20px; z-index: 90; display: flex; gap: 12px;
         }
         .sensor-group { display: flex; flex-direction: column; align-items: center; gap: 5px; }
         .sensor-meter {
@@ -125,8 +117,7 @@
         #scale-display {
             position: fixed; bottom: 20px; right: 5px;
             font-size: 11px; color: #00ffcc; z-index: 9999; pointer-events: none; 
-            font-family: monospace; text-shadow: 0 0 5px rgba(0,0,0,0.8);
-            text-align: right;
+            font-family: monospace; text-shadow: 0 0 5px rgba(0,0,0,0.8); text-align: right;
         }
         #version-display {
             position: fixed; bottom: 5px; right: 5px;
@@ -145,8 +136,9 @@
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v1.8 - POLYPHONIC & MATRIX</div>
+    <div id="version-display">v1.9 - PHYSICS & SPACE</div>
 
+    <button id="mode-btn">MODE: TOUCH</button>
     <button id="sensor-btn">SENSOR: OFF</button>
     
     <div id="sensor-panel">
@@ -218,8 +210,9 @@
     <script>
         const socket = io();
         let isStarted = false;
+        let physicsMode = false; // 重力モードフラグ
         
-        let synth, limiter, chorus, reverb, fft, panner, compressor; 
+        let synth, limiter, chorus, reverb, pingPong, fft, panner, compressor; 
         let eqLow, eqMid, eqHigh, globalFilter; 
 
         // --- Layout ---
@@ -228,7 +221,7 @@
         let playAreaOffsetY = 0; 
         let prevNotePos = null;
 
-        // --- Visuals ---
+        // --- Visuals & Physics ---
         const scene = new THREE.Scene();
         const width = window.innerWidth;
         const height = window.innerHeight;
@@ -243,6 +236,20 @@
         let cursorTargetPos = { x: 0, y: 0 };
         let meterTargetVal = { x: 0, y: 0 };
         let meterCurrentVal = { x: 0, y: 0 };
+
+        // ★追加: カーソル軌跡 (Particle Trail)
+        const TRAIL_LENGTH = 30;
+        let trailPositions = new Float32Array(TRAIL_LENGTH * 3);
+        const trailGeometry = new THREE.BufferGeometry();
+        trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+        const trailMaterial = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.5 });
+        const trailLine = new THREE.Line(trailGeometry, trailMaterial);
+        scene.add(trailLine);
+        
+        // ★追加: 物理ボール
+        const balls = [];
+        const GRAVITY = 1.2; // 重力加速度
+        const BOUNCE_DAMPING = 0.7; // 跳ね返り係数
 
         const cursorGeo = new THREE.OctahedronGeometry(1, 0); 
         const cursorMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.6 });
@@ -287,7 +294,21 @@
         window.addEventListener('resize', updateLayout);
         setTimeout(updateLayout, 100);
 
+        // ★追加: 軌跡更新処理
+        function updateTrail(x, y) {
+            // 配列をシフト
+            for (let i = (TRAIL_LENGTH - 1) * 3; i >= 3; i--) {
+                trailPositions[i] = trailPositions[i - 3];
+            }
+            // 先頭に現在位置を追加
+            trailPositions[0] = x;
+            trailPositions[1] = y;
+            trailPositions[2] = 0;
+            trailGeometry.attributes.position.needsUpdate = true;
+        }
+
         const visualObjects = []; 
+        
         function animate() {
             requestAnimationFrame(animate);
             if(isStarted) drawEQ();
@@ -298,6 +319,9 @@
                 const targetY = cursorTargetPos.y + playAreaOffsetY;
                 sensorCursor.position.x += (cursorTargetPos.x - sensorCursor.position.x) * lerpFactor;
                 sensorCursor.position.y += (targetY - sensorCursor.position.y) * lerpFactor;
+                
+                // 常にカーソル位置へTrail更新
+                updateTrail(sensorCursor.position.x, sensorCursor.position.y);
             }
 
             meterCurrentVal.x += (meterTargetVal.x - meterCurrentVal.x) * lerpFactor;
@@ -305,6 +329,35 @@
             
             if(Math.abs(meterTargetVal.x - meterCurrentVal.x) > 0.001) fillX.style.height = (meterCurrentVal.x * 100) + "%";
             if(Math.abs(meterTargetVal.y - meterCurrentVal.y) > 0.001) fillY.style.height = (meterCurrentVal.y * 100) + "%";
+
+            // ★追加: ボールの物理演算
+            const dt = 0.5; // time step
+            const floorY = -(playAreaSize / 2) + playAreaOffsetY;
+            
+            for (let i = balls.length - 1; i >= 0; i--) {
+                const b = balls[i];
+                b.vy -= GRAVITY * dt;
+                b.mesh.position.y += b.vy * dt;
+
+                // 床判定
+                if (b.mesh.position.y < floorY + b.radius) {
+                    b.mesh.position.y = floorY + b.radius;
+                    b.vy *= -BOUNCE_DAMPING;
+
+                    // 跳ね返り時に発音 (速度がある程度ある場合のみ)
+                    if (Math.abs(b.vy) > 2.0) {
+                        // 発音 (X位置に基づいてピッチ決定)
+                        const normX = ((b.mesh.position.x) / playAreaSize) + 0.5;
+                        // ウェーブテーブル依存のsynthをトリガー
+                        triggerNoteFromPhysics(normX, Math.abs(b.vy) / 20.0);
+                    } else if (Math.abs(b.vy) < 0.5 && b.mesh.position.y < floorY + b.radius + 1) {
+                         // 静止したら削除
+                         scene.remove(b.mesh);
+                         balls.splice(i, 1);
+                         continue;
+                    }
+                }
+            }
 
             const now = Date.now();
             for (let i = visualObjects.length - 1; i >= 0; i--) {
@@ -375,7 +428,6 @@
             fft = new Tone.Analyser("fft", 256); fft.smoothing = 0.85;
             limiter = new Tone.Limiter(-1).connect(fft); fft.toDestination(); 
 
-            // ★追加: コンプレッサー (音圧制御・音割れ防止)
             compressor = new Tone.Compressor({
                 threshold: -20,
                 ratio: 4,
@@ -385,6 +437,9 @@
 
             chorus = new Tone.Chorus(4, 2.5, 0.5);
             reverb = new Tone.Reverb({ decay: 5, wet: 0.5 }); 
+            // ★追加: PingPongDelay (空間演出)
+            pingPong = new Tone.PingPongDelay("4n", 0.2);
+
             globalFilter = new Tone.Filter(4000, "lowpass", -12);
             panner = new Tone.Panner(0);
 
@@ -392,17 +447,19 @@
             eqMid = new Tone.Filter({ type: "peaking", frequency: localEQ.mid.freq, gain: localEQ.mid.gain, Q: 2.5 });
             eqHigh = new Tone.Filter({ type: "highshelf", frequency: localEQ.high.freq, gain: localEQ.high.gain, rolloff: -12 });
             
-            // ★接続チェーンの改良: Reverb -> Compressor -> Limiter
+            // 接続チェーン: Reverb -> Compressor -> Limiter
             compressor.connect(limiter);
             reverb.connect(compressor);
             chorus.connect(reverb);
-            globalFilter.connect(chorus); 
+            // PingPongDelayをFilterの後ろに挟む
+            pingPong.connect(chorus);
+            globalFilter.connect(pingPong); 
+
             eqHigh.connect(globalFilter); 
             eqMid.connect(eqHigh); 
             eqLow.connect(eqMid);
             panner.connect(eqLow);
 
-            // ★Synthの改良: 同時発音数32, 音量控えめ
             synth = new Tone.PolySynth(Tone.Synth, {
                 maxPolyphony: 32, 
                 volume: -10,
@@ -425,6 +482,7 @@
         const autoSpeed = document.getElementById('auto-speed');
         const scaleBtns = document.querySelectorAll('.scale-btn');
         const sensorBtn = document.getElementById('sensor-btn');
+        const modeBtn = document.getElementById('mode-btn'); // ★追加
         const fillX = document.getElementById('fill-x'), fillY = document.getElementById('fill-y');
         const targetXBtn = document.getElementById('target-x-btn'), targetYBtn = document.getElementById('target-y-btn');
         const waveCanvas=document.getElementById('wave-canvas'), waveCtx=waveCanvas.getContext('2d'), resetBtn=document.getElementById('reset-btn');
@@ -433,8 +491,8 @@
         // --- Sensor & Value Logic ---
         let isSensorActive = false; let lastSensorSync = 0;
         
-        // ★変更: 割り当て可能パラメータを統合リスト化
-        const ASSIGNABLE_PARAMS = ['FILTER', 'PAN', 'VOL', 'REVERB', 'DECAY', 'RELEASE', 'FREQ'];
+        // ★追加: DELAYをパラメータリストに追加
+        const ASSIGNABLE_PARAMS = ['FILTER', 'PAN', 'VOL', 'REVERB', 'DELAY', 'DECAY', 'RELEASE', 'FREQ'];
         let myTargets = { x: 'FILTER', y: 'REVERB' };
         
         function updateAllSystems(target, val, skipUI = false) {
@@ -453,6 +511,9 @@
                 if(!skipUI) volSynth.value = vol; 
             } 
             else if (target === 'REVERB') { if(reverb) reverb.wet.rampTo(val, 0.1); } 
+            // ★追加: DELAY (PingPong feedback)
+            else if (target === 'DELAY') { if(pingPong) pingPong.feedback.rampTo(val * 0.9, 0.1); }
+            
             else if (target === 'DECAY') { 
                 const d = 0.1 + (val * 1.9); synth.set({ envelope: { decay: d } }); 
                 if(!skipUI) { slD.value = d; drawADSRVisual(); }
@@ -461,7 +522,6 @@
                 const r = 0.1 + (val * 4.9); synth.set({ envelope: { release: r } }); 
                 if(!skipUI) { slR.value = r; drawADSRVisual(); }
             }
-            // ★追加: 自動演奏速度 (FREQ)
             else if (target === 'FREQ') {
                 const speed = Math.floor(val * 100);
                 localAuto.speed = speed;
@@ -484,7 +544,6 @@
             }
         }
 
-        // ★変更: ボタンクリックで統合リストを循環
         targetXBtn.addEventListener('click', (e) => { e.stopPropagation();
             const idx = ASSIGNABLE_PARAMS.indexOf(myTargets.x); 
             myTargets.x = ASSIGNABLE_PARAMS[(idx + 1) % ASSIGNABLE_PARAMS.length];
@@ -494,6 +553,19 @@
             const idx = ASSIGNABLE_PARAMS.indexOf(myTargets.y); 
             myTargets.y = ASSIGNABLE_PARAMS[(idx + 1) % ASSIGNABLE_PARAMS.length];
             targetYBtn.textContent = myTargets.y;
+        });
+
+        // ★追加: MODEボタン処理
+        modeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            physicsMode = !physicsMode;
+            if(physicsMode) {
+                modeBtn.textContent = "MODE: GRAVITY";
+                modeBtn.classList.add('physics');
+            } else {
+                modeBtn.textContent = "MODE: TOUCH";
+                modeBtn.classList.remove('physics');
+            }
         });
 
         sensorBtn.addEventListener('click', async (e) => { e.stopPropagation();
@@ -542,7 +614,6 @@
         socket.on('sync_scale', (scaleName) => { 
             currentScaleName = scaleName;
             scaleDisplay.textContent = "SCALE: " + currentScaleName;
-            
             scaleBtns.forEach(btn => { 
                 if(btn.dataset.scale === scaleName) btn.classList.add('active'); 
                 else btn.classList.remove('active'); 
@@ -554,6 +625,11 @@
             if(localAuto.active) { autoBtn.textContent = "AUTO: ON"; autoBtn.classList.add("active"); } 
             else { autoBtn.textContent = "AUTO: OFF"; autoBtn.classList.remove("active"); }
             autoSpeed.value = localAuto.speed;
+        });
+
+        // ★追加: 他ユーザーのボール生成を受け取る
+        socket.on('spawn_ball', (data) => {
+            if (data.id !== socket.id) spawnBallVisual(data.x, data.y, data.id, false);
         });
 
 
@@ -698,8 +774,32 @@
         eqCanvas.addEventListener('mousedown', e=>handleEQMove(e.clientX,e.clientY,true)); window.addEventListener('mousemove', e=>{if(draggingPoint)handleEQMove(e.clientX,e.clientY,false)}); window.addEventListener('mouseup', endEQDrag);
         eqCanvas.addEventListener('touchstart', e=>{e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,true)},{passive:false}); window.addEventListener('touchmove', e=>{if(draggingPoint){e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,false)}},{passive:false}); window.addEventListener('touchend', endEQDrag);
 
-        // Note Triggering
+        // Note Triggering & Physics Spawn
         let lastMoveNoteTime = 0; const MOVE_NOTE_INTERVAL = 100;
+
+        function triggerNoteFromPhysics(normX, volumeGain) {
+            const scaleNotes = SCALES[currentScaleName] || SCALES["MYSTERIOUS"];
+            // X位置を正規化(0-1)してノートを選択
+            const clampX = Math.max(0, Math.min(1, normX));
+            const noteIndex = Math.floor((1 - clampX) * scaleNotes.length); // 上下反転させない
+            const note = scaleNotes[Math.min(noteIndex, scaleNotes.length - 1)];
+            
+            if (!synth) return;
+            // velocityを物理演算の強さに応じて変える
+            const velocity = Math.min(1.0, 0.3 + volumeGain);
+            synth.triggerAttackRelease(note, "8n", undefined, velocity);
+
+            // ビジュアライズ用のリング (位置はボールのX, 床Y)
+            const xPos = (clampX - 0.5) * playAreaSize;
+            const yPos = -(playAreaSize / 2) + playAreaOffsetY;
+            
+            const mesh = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.0, 32), new THREE.MeshBasicMaterial({ color: 0xff00cc, transparent: true, side: THREE.DoubleSide }));
+            mesh.position.set(xPos, yPos, 0);
+            mesh.rotation.x = Math.PI / 2; // 床に寝かせる
+            scene.add(mesh);
+            visualObjects.push({ type: 'ring', mesh, startTime: Date.now(), duration: 0.5 });
+        }
+
         function triggerNoteFromInput(normX, normY) {
             if (normX < 0 || normX > 1 || normY < 0 || normY > 1) return;
             const scaleNotes = SCALES[currentScaleName] || SCALES["MYSTERIOUS"];
@@ -709,6 +809,28 @@
             playAndVisualizeNote(noteData); 
             socket.emit('play_note', { note, duration: noteData.duration, normX, normY });
         }
+
+        function spawnBallVisual(x, y, id, isLocal) {
+            const color = isLocal ? 0xff00cc : 0xffaa00;
+            const ballGeo = new THREE.SphereGeometry(playAreaSize * 0.03, 16, 16);
+            const ballMat = new THREE.MeshBasicMaterial({ color: color, wireframe: true });
+            const ballMesh = new THREE.Mesh(ballGeo, ballMat);
+            
+            // 座標変換 (スクリーン正規化座標 -> ThreeJSワールド座標)
+            const wX = (x - 0.5) * playAreaSize;
+            const wY = -(y - 0.5) * playAreaSize + playAreaOffsetY;
+            
+            ballMesh.position.set(wX, wY, 0);
+            scene.add(ballMesh);
+            
+            balls.push({
+                mesh: ballMesh,
+                vy: 0,
+                radius: playAreaSize * 0.03,
+                id: id
+            });
+        }
+
         function handleInput(e, isMove) {
             if (!isStarted) return;
             const target = e.target;
@@ -725,8 +847,18 @@
             const centerX = w / 2; const centerY = (h / 2) - playAreaOffsetY;
             const normX = ((cX - centerX) / playAreaSize) + 0.5; const normY = ((cY - centerY) / playAreaSize) + 0.5;
 
-            if (isMove) { const now = Date.now(); if (now - lastMoveNoteTime > MOVE_NOTE_INTERVAL) { triggerNoteFromInput(normX, normY); lastMoveNoteTime = now; } } 
-            else { triggerNoteFromInput(normX, normY); lastMoveNoteTime = Date.now(); }
+            // ★変更: モードによる分岐
+            if (physicsMode) {
+                // 重力モード: 移動中は無視、クリック/タップ開始時のみボール生成
+                if (!isMove && normX >= 0 && normX <= 1 && normY >= 0 && normY <= 1) {
+                    spawnBallVisual(normX, normY, socket.id, true);
+                    socket.emit('spawn_ball', { x: normX, y: normY });
+                }
+            } else {
+                // 通常モード (以前の処理)
+                if (isMove) { const now = Date.now(); if (now - lastMoveNoteTime > MOVE_NOTE_INTERVAL) { triggerNoteFromInput(normX, normY); lastMoveNoteTime = now; } } 
+                else { triggerNoteFromInput(normX, normY); lastMoveNoteTime = Date.now(); }
+            }
         }
         let isPointerDown = false;
         const onPointerDown = e => { isPointerDown = true; handleInput(e, false); };
