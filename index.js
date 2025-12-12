@@ -55,13 +55,14 @@ let currentScaleName = "MYSTERIOUS";
 let autoPlayState = { active: false, speed: 30 };
 let autoPlayTimeout = null;
 
-// ★追加: DELAYパラメータ
+// ★変更: DELAYを分割
 let globalParams = {
     'FILTER': 0.5,
     'PAN': 0.5,
     'VOL': 0.8,
     'REVERB': 0.0,
-    'DELAY': 0.2, // PingPongDelay feedback
+    'DELAY_FB': 0.3,  // Feedback
+    'DELAY_MIX': 0.0, // Mix (Wet)
     'DECAY': 0.1,
     'RELEASE': 0.3,
     'FREQ': 0.3
@@ -114,7 +115,6 @@ io.on('connection', (socket) => {
     });
 
     socket.on('spawn_ball', (data) => {
-        // 重力ボールの生成イベントを他ユーザーに通知
         io.emit('spawn_ball', { ...data, id: socket.id });
     });
 
