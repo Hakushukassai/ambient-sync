@@ -107,9 +107,9 @@
             border: 1px solid #333;
         }
         .sensor-fill {
-            width: 100%; height: 50%;
+            width: 100%; height: 0%; /* JSで制御するため初期値0 */
             background: #00ffcc;
-            transition: height 0.1s;
+            /* transition: height 0.1s; <--- ラグの原因になるため削除しJSで滑らかにする */
             box-shadow: 0 0 10px #00ffcc;
         }
         .target-btn {
@@ -145,7 +145,7 @@
         <span>PLAY INSIDE THE SQUARE</span>
     </div>
 
-    <div id="version-display">v1.1 - SENSOR VISUALS</div>
+    <div id="version-display">v1.2 - SMOOTH & INSTANT PLAY</div>
 
     <button id="sensor-btn">SENSOR: OFF</button>
     
@@ -238,12 +238,15 @@
         renderer.domElement.id = 'main-canvas';
         document.body.appendChild(renderer.domElement);
 
-        // ★ センサー可視化用のカーソルオブジェクト
+        // ★ センサー可視化用のカーソルと変数をスムージング用に分離
         let sensorCursor;
+        // 現在値(current) と 目標値(target) を分けて管理し、animateで補間する
         let cursorTargetPos = { x: 0, y: 0 };
-        
+        let meterTargetVal = { x: 0, y: 0 };
+        let meterCurrentVal = { x: 0, y: 0 };
+
         // ジオメトリを作成
-        const cursorGeo = new THREE.OctahedronGeometry(1, 0); // サイズはupdateLayoutで調整
+        const cursorGeo = new THREE.OctahedronGeometry(1, 0); 
         const cursorMat = new THREE.MeshBasicMaterial({ 
             color: 0x00ffcc, 
             wireframe: true, 
@@ -277,7 +280,7 @@
             if(sensorCursor) {
                 const s = playAreaSize * 0.08;
                 sensorCursor.scale.set(s, s, s);
-                sensorCursor.position.y = playAreaOffsetY + cursorTargetPos.y; // 位置補正
+                sensorCursor.position.y = playAreaOffsetY + cursorTargetPos.y; 
             }
 
             resizeCanvases();
@@ -300,20 +303,31 @@
             requestAnimationFrame(animate);
             if(isStarted) drawEQ();
 
-            // ★ センサーカーソルのアニメーション
+            // ★ センサーカーソル & メーターのアニメーション (スムーズ化)
+            const lerpFactor = 0.2; // 0.1だと遅いので少し速める
+            
             if(sensorCursor) {
-                // ゆらゆら回転させる
                 sensorCursor.rotation.x += 0.01;
                 sensorCursor.rotation.y += 0.015;
                 
-                // 位置をターゲットに向かって滑らかに移動 (Lerp)
-                // 座標系: THREE.jsの中心(0,0)に対して調整
-                // cursorTargetPosは updateSensorVisuals で更新される
-                const targetY = cursorTargetPos.y + playAreaOffsetY; // プレイエリアのオフセットを加算
-                
-                sensorCursor.position.x += (cursorTargetPos.x - sensorCursor.position.x) * 0.1;
-                sensorCursor.position.y += (targetY - sensorCursor.position.y) * 0.1;
+                // 3Dカーソルの移動
+                const targetY = cursorTargetPos.y + playAreaOffsetY;
+                sensorCursor.position.x += (cursorTargetPos.x - sensorCursor.position.x) * lerpFactor;
+                sensorCursor.position.y += (targetY - sensorCursor.position.y) * lerpFactor;
             }
+
+            // メーター(DOM)の移動もここでJS制御する (CSS transitionは重い/カクつくため)
+            meterCurrentVal.x += (meterTargetVal.x - meterCurrentVal.x) * lerpFactor;
+            meterCurrentVal.y += (meterTargetVal.y - meterCurrentVal.y) * lerpFactor;
+            
+            // DOM更新は負荷軽減のため値が変わっている時だけ行う
+            if(Math.abs(meterTargetVal.x - meterCurrentVal.x) > 0.001) {
+                fillX.style.height = (meterCurrentVal.x * 100) + "%";
+            }
+            if(Math.abs(meterTargetVal.y - meterCurrentVal.y) > 0.001) {
+                fillY.style.height = (meterCurrentVal.y * 100) + "%";
+            }
+
 
             const now = Date.now();
             for (let i = visualObjects.length - 1; i >= 0; i--) {
@@ -431,24 +445,15 @@
         const TARGETS_Y = ['REVERB', 'DECAY', 'RELEASE'];
         let myTargets = { x: 'FILTER', y: 'REVERB' };
 
-        // グローバルなパラメータ値を保持（カーソル位置の即時更新用）
         let currentParamsValue = {};
 
         // ★ 音声だけでなくUIも更新する関数 (全員共有)
         function applyAudioParam(target, val) {
-            currentParamsValue[target] = val; // 値を保存
+            currentParamsValue[target] = val; 
             
-            // ★ カーソル位置の更新ロジック
-            // 現在のターゲット設定(myTargets.x/y)と一致する場合、カーソルの目標位置を更新する
-            if (target === myTargets.x) {
-                // 0.0~1.0 を -playAreaSize/2 ~ +playAreaSize/2 にマッピング
-                cursorTargetPos.x = (val - 0.5) * playAreaSize;
-            }
-            if (target === myTargets.y) {
-                // Y軸も同様
-                cursorTargetPos.y = (val - 0.5) * playAreaSize;
-            }
-
+            // カーソル位置の目標値更新
+            if (target === myTargets.x) cursorTargetPos.x = (val - 0.5) * playAreaSize;
+            if (target === myTargets.y) cursorTargetPos.y = (val - 0.5) * playAreaSize;
 
             if (!synth) return;
 
@@ -463,7 +468,7 @@
             else if (target === 'VOL') {
                 const vol = (val * 60) - 60;
                 synth.volume.rampTo(vol, 0.1);
-                // ★UI更新: スライダーを動かす
+                // UI更新
                 const volSlider = document.getElementById('vol-synth');
                 if(volSlider) volSlider.value = vol;
             } 
@@ -471,33 +476,32 @@
                 if(reverb) reverb.wet.rampTo(val, 0.1);
             } 
             else if (target === 'DECAY') {
-                // val(0-1) -> 0.1-2.0
                 const d = 0.1 + (val * 1.9);
                 synth.set({ envelope: { decay: d } });
-                // ★UI更新: ADSRスライダーとグラフ
+                // UI更新
                 const dSlider = document.getElementById('adsr-d');
                 if(dSlider) {
                     dSlider.value = d;
-                    drawADSRVisual(); // グラフ再描画
+                    drawADSRVisual(); 
                 }
             } 
             else if (target === 'RELEASE') {
-                // val(0-1) -> 0.1-5.0
                 const r = 0.1 + (val * 4.9);
                 synth.set({ envelope: { release: r } });
-                // ★UI更新: ADSRスライダーとグラフ
+                // UI更新
                 const rSlider = document.getElementById('adsr-r');
                 if(rSlider) {
                     rSlider.value = r;
-                    drawADSRVisual(); // グラフ再描画
+                    drawADSRVisual(); 
                 }
             }
         }
 
         function updateSensorVisuals(target, val) {
             // 自分が見ているメーターと同じターゲットなら動かす
-            if (myTargets.x === target) fillX.style.height = (val * 100) + "%";
-            if (myTargets.y === target) fillY.style.height = (val * 100) + "%";
+            // ★ここでは直接DOMを触らず、目標値(target)をセットするだけにする(animateで描画)
+            if (myTargets.x === target) meterTargetVal.x = val;
+            if (myTargets.y === target) meterTargetVal.y = val;
         }
 
         function handleSensor(e) {
@@ -526,7 +530,6 @@
             }
         }
 
-        // ターゲット切り替え時に、現在の値に合わせてカーソルを飛ばすためのヘルパー
         function syncCursorToCurrentTarget() {
             if (currentParamsValue[myTargets.x] !== undefined) {
                 cursorTargetPos.x = (currentParamsValue[myTargets.x] - 0.5) * playAreaSize;
@@ -541,7 +544,7 @@
             const idx = TARGETS_X.indexOf(myTargets.x);
             myTargets.x = TARGETS_X[(idx + 1) % TARGETS_X.length];
             targetXBtn.textContent = myTargets.x;
-            syncCursorToCurrentTarget(); // カーソル位置合わせ
+            syncCursorToCurrentTarget(); 
         });
         targetXBtn.addEventListener('touchstart', e=>e.stopPropagation(),{passive:false});
 
@@ -550,7 +553,7 @@
             const idx = TARGETS_Y.indexOf(myTargets.y);
             myTargets.y = TARGETS_Y[(idx + 1) % TARGETS_Y.length];
             targetYBtn.textContent = myTargets.y;
-            syncCursorToCurrentTarget(); // カーソル位置合わせ
+            syncCursorToCurrentTarget(); 
         });
         targetYBtn.addEventListener('touchstart', e=>e.stopPropagation(),{passive:false});
 
@@ -818,7 +821,13 @@
             const scaleNotes = SCALES[currentScaleName];
             const noteIndex = Math.floor((1 - normY) * scaleNotes.length);
             const note = scaleNotes[Math.min(noteIndex, scaleNotes.length - 1)];
-            socket.emit('play_note', { note, duration: 0.5 + normX * 4.0, normX, normY });
+            
+            // ★ Optimistic UI: サーバーの返答を待たずに、まずは自分の画面で即座に鳴らす
+            const noteData = { note, duration: 0.5 + normX * 4.0, normX, normY, id: socket.id };
+            playAndVisualizeNote(noteData); // 自分用
+
+            // サーバーへ送信 (他の人用)
+            socket.emit('play_note', { note, duration: noteData.duration, normX, normY });
         }
 
         function handleInput(e, isMove) {
@@ -863,15 +872,18 @@
         window.addEventListener('mousedown', onPointerDown); window.addEventListener('mousemove', onPointerMove); window.addEventListener('mouseup', onPointerUp);
         window.addEventListener('touchstart', onPointerDown, {passive: false}); window.addEventListener('touchmove', onPointerMove, {passive: false}); window.addEventListener('touchend', onPointerUp);
 
-        socket.on('trigger_note', (data) => {
+        // ★ 音と映像を再生する共通関数
+        function playAndVisualizeNote(data) {
             if (!synth) return;
             synth.triggerAttackRelease(data.note, data.duration);
+            
             const xPos = (data.normX - 0.5) * playAreaSize;
             const yPos = -(data.normY - 0.5) * playAreaSize + playAreaOffsetY;
             const pos = new THREE.Vector3(xPos, yPos, 0);
 
             const isAuto = data.id === 'auto';
-            const color = isAuto ? 0xffaa00 : (data.id === socket.id ? 0x00ffcc : 0xff00cc);
+            const isMe = data.id === socket.id;
+            const color = isAuto ? 0xffaa00 : (isMe ? 0x00ffcc : 0xff00cc);
 
             const mesh = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.0, 64), new THREE.MeshBasicMaterial({ 
                 color: color, 
@@ -883,7 +895,7 @@
             scene.add(mesh);
             visualObjects.push({ type: 'ring', mesh, startTime: Date.now(), duration: data.duration });
 
-            if (prevNotePos && !isAuto) {
+            if (prevNotePos && !isAuto && isMe) { // 線は自分または連続した人だけ引く
                 const points = [prevNotePos.clone(), pos.clone()];
                 const geometry = new THREE.BufferGeometry().setFromPoints(points);
                 const material = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending });
@@ -891,7 +903,13 @@
                 scene.add(line);
                 visualObjects.push({ type: 'line', mesh: line, startTime: Date.now(), duration: data.duration * 2.0 }); 
             }
-            if(!isAuto) prevNotePos = pos;
+            if(!isAuto && isMe) prevNotePos = pos;
+        }
+
+        socket.on('trigger_note', (data) => {
+            // ★ 自分のIDのイベントが返ってきた場合は無視する (既に playAndVisualizeNote で再生済みだから)
+            if (data.id === socket.id) return;
+            playAndVisualizeNote(data);
         });
 
         socket.on('sync_waveform', d => { waveBuffer=d; resizeCanvases(); updateSynthWave(d); });
