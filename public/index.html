@@ -118,11 +118,10 @@
         .sensor-fill { width: 100%; height: 0%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc; }
         .target-btn {
             font-size: 9px; color: #00ffcc; background: rgba(0,0,0,0.6);
-            border: 1px solid #444; padding: 4px; width: 45px;
+            border: 1px solid #444; padding: 4px; width: 55px;
             text-align: center; cursor: pointer; border-radius: 4px; white-space: nowrap;
         }
 
-        /* ★ 現在のスケールを表示するデバッグ用要素 */
         #scale-display {
             position: fixed; bottom: 20px; right: 5px;
             font-size: 11px; color: #00ffcc; z-index: 9999; pointer-events: none; 
@@ -146,7 +145,7 @@
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v1.7 - FULL STACK SYNC</div>
+    <div id="version-display">v1.8 - POLYPHONIC & MATRIX</div>
 
     <button id="sensor-btn">SENSOR: OFF</button>
     
@@ -220,7 +219,7 @@
         const socket = io();
         let isStarted = false;
         
-        let synth, limiter, chorus, reverb, fft, panner; 
+        let synth, limiter, chorus, reverb, fft, panner, compressor; 
         let eqLow, eqMid, eqHigh, globalFilter; 
 
         // --- Layout ---
@@ -376,6 +375,14 @@
             fft = new Tone.Analyser("fft", 256); fft.smoothing = 0.85;
             limiter = new Tone.Limiter(-1).connect(fft); fft.toDestination(); 
 
+            // ★追加: コンプレッサー (音圧制御・音割れ防止)
+            compressor = new Tone.Compressor({
+                threshold: -20,
+                ratio: 4,
+                attack: 0.01,
+                release: 0.1
+            });
+
             chorus = new Tone.Chorus(4, 2.5, 0.5);
             reverb = new Tone.Reverb({ decay: 5, wet: 0.5 }); 
             globalFilter = new Tone.Filter(4000, "lowpass", -12);
@@ -385,12 +392,22 @@
             eqMid = new Tone.Filter({ type: "peaking", frequency: localEQ.mid.freq, gain: localEQ.mid.gain, Q: 2.5 });
             eqHigh = new Tone.Filter({ type: "highshelf", frequency: localEQ.high.freq, gain: localEQ.high.gain, rolloff: -12 });
             
-            reverb.connect(limiter); chorus.connect(reverb);
-            globalFilter.connect(chorus); eqHigh.connect(globalFilter); eqMid.connect(eqHigh); eqLow.connect(eqMid);
+            // ★接続チェーンの改良: Reverb -> Compressor -> Limiter
+            compressor.connect(limiter);
+            reverb.connect(compressor);
+            chorus.connect(reverb);
+            globalFilter.connect(chorus); 
+            eqHigh.connect(globalFilter); 
+            eqMid.connect(eqHigh); 
+            eqLow.connect(eqMid);
             panner.connect(eqLow);
 
+            // ★Synthの改良: 同時発音数32, 音量控えめ
             synth = new Tone.PolySynth(Tone.Synth, {
-                maxPolyphony: 20, volume: localMixer.synth, oscillator: { type: "triangle" }, envelope: localADSR
+                maxPolyphony: 32, 
+                volume: -10,
+                oscillator: { type: "triangle" }, 
+                envelope: localADSR
             }).connect(panner); 
 
             updateSynthWave(waveBuffer);
@@ -415,7 +432,9 @@
 
         // --- Sensor & Value Logic ---
         let isSensorActive = false; let lastSensorSync = 0;
-        const TARGETS_X = ['FILTER', 'PAN', 'VOL']; const TARGETS_Y = ['REVERB', 'DECAY', 'RELEASE'];
+        
+        // ★変更: 割り当て可能パラメータを統合リスト化
+        const ASSIGNABLE_PARAMS = ['FILTER', 'PAN', 'VOL', 'REVERB', 'DECAY', 'RELEASE', 'FREQ'];
         let myTargets = { x: 'FILTER', y: 'REVERB' };
         
         function updateAllSystems(target, val, skipUI = false) {
@@ -442,6 +461,12 @@
                 const r = 0.1 + (val * 4.9); synth.set({ envelope: { release: r } }); 
                 if(!skipUI) { slR.value = r; drawADSRVisual(); }
             }
+            // ★追加: 自動演奏速度 (FREQ)
+            else if (target === 'FREQ') {
+                const speed = Math.floor(val * 100);
+                localAuto.speed = speed;
+                if(!skipUI) autoSpeed.value = speed;
+            }
         }
 
         function handleSensor(e) {
@@ -459,12 +484,15 @@
             }
         }
 
+        // ★変更: ボタンクリックで統合リストを循環
         targetXBtn.addEventListener('click', (e) => { e.stopPropagation();
-            const idx = TARGETS_X.indexOf(myTargets.x); myTargets.x = TARGETS_X[(idx + 1) % TARGETS_X.length];
+            const idx = ASSIGNABLE_PARAMS.indexOf(myTargets.x); 
+            myTargets.x = ASSIGNABLE_PARAMS[(idx + 1) % ASSIGNABLE_PARAMS.length];
             targetXBtn.textContent = myTargets.x;
         });
         targetYBtn.addEventListener('click', (e) => { e.stopPropagation();
-            const idx = TARGETS_Y.indexOf(myTargets.y); myTargets.y = TARGETS_Y[(idx + 1) % TARGETS_Y.length];
+            const idx = ASSIGNABLE_PARAMS.indexOf(myTargets.y); 
+            myTargets.y = ASSIGNABLE_PARAMS[(idx + 1) % ASSIGNABLE_PARAMS.length];
             targetYBtn.textContent = myTargets.y;
         });
 
@@ -513,7 +541,7 @@
 
         socket.on('sync_scale', (scaleName) => { 
             currentScaleName = scaleName;
-            scaleDisplay.textContent = "SCALE: " + currentScaleName; // ★表示更新
+            scaleDisplay.textContent = "SCALE: " + currentScaleName;
             
             scaleBtns.forEach(btn => { 
                 if(btn.dataset.scale === scaleName) btn.classList.add('active'); 
@@ -556,11 +584,9 @@
         };
         [slA,slD,slS,slR].forEach(s=>{ s.addEventListener('input',updateADSR); });
 
-        // Scale Button Logic (Improved)
         scaleBtns.forEach(btn => {
             btn.addEventListener('pointerdown', (e) => {
                 e.stopPropagation();
-                // Optimistic UI
                 scaleBtns.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 scaleDisplay.textContent = "SCALE: " + btn.dataset.scale + " (SYNCING...)";
