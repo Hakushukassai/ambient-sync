@@ -8,8 +8,7 @@ const path = require('path');
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- サーバー側の状態管理 (初期値) ---
-// ※ここが「正」となるデータです
+// --- サーバーデータ初期値 ---
 let globalState = {
     waveform: new Array(128).fill(0).map((_, i) => Math.sin((i / 128) * Math.PI * 2)),
     eq: {
@@ -21,7 +20,6 @@ let globalState = {
     adsr: { attack: 0.05, decay: 0.2, sustain: 0.5, release: 1.0 },
     scale: "MINOR_PENTATONIC",
     auto: { active: false, speed: 30 },
-    // パラメータ (0.0-1.0)
     params: {
         'FILTER': 0.5, 'PAN': 0.5, 'VOL': 0.8, 'REVERB': 0.0,
         'ATTACK': 0.05, 'DECAY': 0.2, 'SUSTAIN': 0.5, 'RELEASE': 0.3
@@ -31,7 +29,6 @@ let globalState = {
 let connectedUsers = {};
 let autoPlayTimeout = null;
 
-// スケール定義
 const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
 const SCALE_DEFINITIONS = {
     "MINOR_PENTATONIC": [0, 3, 5, 7, 10], "MAJOR": [0, 2, 4, 5, 7, 9, 11],
@@ -53,7 +50,6 @@ for (const [name, intervals] of Object.entries(SCALE_DEFINITIONS)) {
     SCALES[name] = notes;
 }
 
-// ユーザーカラー生成
 function getRandomColor() {
     const letters = '0123456789ABCDEF';
     let color = '#';
@@ -61,7 +57,6 @@ function getRandomColor() {
     return color;
 }
 
-// オートプレイロジック
 function scheduleNextAutoNote() {
     if (autoPlayTimeout) clearTimeout(autoPlayTimeout);
     if (!globalState.auto.active) return;
@@ -70,7 +65,6 @@ function scheduleNextAutoNote() {
     const baseInterval = slowLimit - ((globalState.auto.speed / 100) * (slowLimit - fastLimit));
     const randomFactor = 0.5 + Math.random(); 
     
-    // 音を鳴らす
     const scaleNotes = SCALES[globalState.scale] || SCALES["MINOR_PENTATONIC"];
     const normX = Math.random(); const normY = Math.random();
     const noteIndex = Math.floor((1 - normY) * scaleNotes.length);
@@ -86,9 +80,7 @@ function scheduleNextAutoNote() {
 io.on('connection', (socket) => {
     const userColor = getRandomColor();
     connectedUsers[socket.id] = { color: userColor };
-    console.log(`User connected: ${socket.id}`);
-
-    // ① 接続時に現状の全データを送る
+    
     socket.emit('init_state', {
         id: socket.id,
         color: userColor,
@@ -96,13 +88,9 @@ io.on('connection', (socket) => {
         users: connectedUsers
     });
 
-    // ② 全員にユーザー更新を通知
     io.emit('update_users', connectedUsers);
 
-    // --- イベントハンドラ ---
-
     socket.on('play_note', (data) => {
-        // そのまま全員に転送（サーバー負荷軽減のため計算しない）
         socket.broadcast.emit('trigger_note', { ...data, id: socket.id });
     });
 
@@ -141,7 +129,6 @@ io.on('connection', (socket) => {
     });
 
     socket.on('update_param', (data) => {
-        // target: 'FILTER', value: 0.5
         if (data && data.target) {
             globalState.params[data.target] = data.value;
             socket.broadcast.emit('sync_param', { target: data.target, value: data.value, userId: socket.id });
