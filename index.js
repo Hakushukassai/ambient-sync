@@ -9,7 +9,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- 音楽理論データ (HTML側と完全に一致させる) ---
 const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
 const SCALE_DEFINITIONS = {
-    "MYSTERIOUS":       [0, 2, 3, 6, 7, 8, 11], // ★追加: これがないと初期値で不整合が起きる
+    "MYSTERIOUS":       [0, 2, 3, 6, 7, 8, 11],
     "MINOR_PENTATONIC": [0, 3, 5, 7, 10], 
     "MAJOR":            [0, 2, 4, 5, 7, 9, 11],
     "MINOR":            [0, 2, 3, 5, 7, 8, 10],
@@ -55,13 +55,15 @@ let currentScaleName = "MYSTERIOUS";
 let autoPlayState = { active: false, speed: 30 };
 let autoPlayTimeout = null;
 
+// ★変更: FREQ（速度）もグローバルパラメータとして管理
 let globalParams = {
     'FILTER': 0.5,
     'PAN': 0.5,
     'VOL': 0.8,
     'REVERB': 0.0,
     'DECAY': 0.1,
-    'RELEASE': 0.3
+    'RELEASE': 0.3,
+    'FREQ': 0.3
 };
 
 function scheduleNextAutoNote() {
@@ -79,10 +81,8 @@ function scheduleNextAutoNote() {
 function playAutoNote() {
     const normX = Math.random();
     const normY = Math.random();
-    // サーバー側も辞書にあるスケールを使う（辞書にない場合はMYSTERIOUSへ）
     const scaleNotes = SCALES[currentScaleName] || SCALES["MYSTERIOUS"];
     
-    // 安全対策
     if (!scaleNotes) return;
 
     const noteIndex = Math.floor((1 - normY) * scaleNotes.length);
@@ -140,9 +140,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ★スケール更新処理
     socket.on('update_scale', (scaleName) => {
-        // 定義にあるスケールか確認
         if (SCALE_DEFINITIONS[scaleName]) {
             currentScaleName = scaleName;
             io.emit('sync_scale', currentScaleName);
@@ -165,6 +163,13 @@ io.on('connection', (socket) => {
         if (data && data.target && typeof data.value === 'number') {
             globalParams[data.target] = data.value;
             socket.broadcast.emit('sync_param', data);
+
+            // ★追加: FREQ操作時はサーバー側の自動演奏速度も更新する
+            if (data.target === 'FREQ') {
+                autoPlayState.speed = Math.floor(data.value * 100);
+                // 自動演奏ループの次回のタイミング計算に反映されるため、ここでは明示的にsync_autoしなくても
+                // sync_paramでスライダーが動くのでUX的にはOK
+            }
         }
     });
 
