@@ -104,7 +104,7 @@
             <canvas id="wave-canvas" width="240" height="90"></canvas>
             <div class="btn-group">
                 <button id="reset-btn">RESET</button>
-                <button id="drone-btn" class="active">AMBIENT: ON</button>
+                <button id="auto-btn">AUTO: OFF</button>
             </div>
         </div>
 
@@ -117,10 +117,10 @@
         </div>
 
         <div class="panel-section">
-            <div class="label">3. MIXER</div>
+            <div class="label">3. MIXER & AUTO</div>
             <div class="mixer-container">
-                <div class="slider-group"><input type="range" class="vertical" id="vol-synth" min="-60" max="0" step="1" value="-6"><span class="param-label">SYNTH</span></div>
-                <div class="slider-group"><input type="range" class="vertical" id="vol-drone" min="-60" max="0" step="1" value="-5"><span class="param-label">DRONE</span></div>
+                <div class="slider-group"><input type="range" class="vertical" id="vol-synth" min="-60" max="0" step="1" value="-6"><span class="param-label">VOL</span></div>
+                <div class="slider-group"><input type="range" class="vertical" id="auto-speed" min="0" max="100" step="1" value="50"><span class="param-label">SPEED</span></div>
             </div>
         </div>
 
@@ -157,9 +157,8 @@
         let isStarted = false;
         
         let synth, limiter, chorus, reverb, fft; 
-        let eqLow, eqMid, eqHigh, globalFilter; // ★GlobalFilter追加
-        let droneSynth;
-        let isDroneOn = true;
+        let eqLow, eqMid, eqHigh, globalFilter; 
+        // ★ドローン変数を削除
 
         let playAreaSize = 0;
         let playAreaMesh;
@@ -239,8 +238,11 @@
 
         // --- Audio ---
         let localADSR = { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1.5 };
-        let localMixer = { synth: -4, drone: -6 }; 
+        let localMixer = { synth: -4 }; // Drone削除
         let localEQ = { low: {freq:100, gain:4}, mid: {freq:1000, gain:-2}, high: {freq:5000, gain:-6} };
+        
+        // ★オートプレイの状態
+        let localAuto = { active: false, speed: 50 };
 
         const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
         function generateScale(intervals) {
@@ -278,17 +280,14 @@
             if (isStarted) return;
             await Tone.start();
             
-            // ★ FFTサイズを256に増やして低音の解像度を確保
             fft = new Tone.Analyser("fft", 256);
-            fft.smoothing = 0.85; // 滑らかに
+            fft.smoothing = 0.85;
 
             limiter = new Tone.Limiter(-1).connect(fft);
             fft.toDestination(); 
 
             chorus = new Tone.Chorus(4, 2.5, 0.5);
             reverb = new Tone.Reverb({ decay: 5, wet: 0.5 }); 
-            
-            // ★ 高音が痛いのを防ぐグローバルフィルター (LPF @ 4000Hz)
             globalFilter = new Tone.Filter(4000, "lowpass", -12);
 
             eqLow = new Tone.Filter({ type: "lowshelf", frequency: localEQ.low.freq, gain: localEQ.low.gain, rolloff: -12 });
@@ -297,70 +296,67 @@
             
             reverb.connect(limiter); 
             chorus.connect(reverb);
-            globalFilter.connect(chorus); // フィルターを通してからエフェクトへ
+            globalFilter.connect(chorus);
             eqHigh.connect(globalFilter); 
             eqMid.connect(eqHigh); 
             eqLow.connect(eqMid);
             
-            // ★ SynthをTriangleベースに変更し、少し太くする
             synth = new Tone.PolySynth(Tone.Synth, {
                 maxPolyphony: 20, 
                 volume: localMixer.synth, 
-                oscillator: { type: "triangle" }, // Sine -> Triangle (存在感アップ)
+                oscillator: { type: "triangle" },
                 envelope: localADSR
             }).connect(eqLow);
             
-            const droneFilter = new Tone.Filter(600, "lowpass");
-            droneSynth = new Tone.PolySynth(Tone.Synth, {
-                maxPolyphony: 6, 
-                volume: localMixer.drone, 
-                oscillator: { type: "fatcustom", spread: 20, count: 3, partials: [1, 0.5, 0.3] }, 
-                envelope: { attack: 2, decay: 0, sustain: 1, release: 5 }
-            }).connect(droneFilter);
-            droneFilter.connect(reverb);
-            
+            // ★Drone初期化を削除
+
             updateSynthWave(waveBuffer);
 
-            startDroneLoop();
             isStarted = true;
             document.getElementById('overlay').style.display = 'none';
             updateLayout();
         }
         document.getElementById('overlay').addEventListener('click', initAudio);
 
-        function startDroneLoop() {
-            const triggerDrone = () => {
-                if (!isDroneOn || !isStarted) { return; } 
-                const currentNotes = SCALES[currentScaleName];
-                if (!currentNotes || currentNotes.length === 0) { setTimeout(triggerDrone, 1000); return; }
+        // ★オートプレイのUIロジック
+        const autoBtn = document.getElementById('auto-btn');
+        const autoSpeed = document.getElementById('auto-speed');
+        let lastAutoSync = 0;
 
-                const lowNotes = currentNotes.filter(n => n.includes('2') || n.includes('3'));
-                if (lowNotes.length === 0) { setTimeout(triggerDrone, 1000); return; }
-
-                const note = lowNotes[Math.floor(Math.random() * lowNotes.length)];
-                droneSynth.triggerAttackRelease(note, 6, Tone.now());
-                setTimeout(triggerDrone, 4000); 
-            };
-            triggerDrone();
+        function updateAutoUI() {
+            if(localAuto.active) {
+                autoBtn.textContent = "AUTO: ON";
+                autoBtn.classList.add("active");
+            } else {
+                autoBtn.textContent = "AUTO: OFF";
+                autoBtn.classList.remove("active");
+            }
+            autoSpeed.value = localAuto.speed;
         }
 
-        const droneBtn = document.getElementById('drone-btn');
-        droneBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); 
-            isDroneOn = !isDroneOn;
-            if (isDroneOn) { 
-                droneBtn.textContent = "AMBIENT: ON"; 
-                droneBtn.classList.add("active"); 
-                if(isStarted) startDroneLoop();
-            } else { 
-                droneBtn.textContent = "AMBIENT: OFF"; 
-                droneBtn.classList.remove("active"); 
-                droneSynth.releaseAll(); 
+        autoBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            localAuto.active = !localAuto.active;
+            socket.emit('update_auto', localAuto);
+            updateAutoUI();
+        });
+        autoBtn.addEventListener('touchstart', (e) => e.stopPropagation(), {passive: false});
+
+        autoSpeed.addEventListener('input', () => {
+            localAuto.speed = parseInt(autoSpeed.value);
+            if(Date.now() - lastAutoSync > 100) { // 送信頻度制限
+                socket.emit('update_auto', localAuto);
+                lastAutoSync = Date.now();
             }
         });
-        droneBtn.addEventListener('touchstart', (e) => e.stopPropagation(), {passive: false});
+        autoSpeed.addEventListener('change', () => {
+            socket.emit('update_auto', localAuto);
+        });
+        autoSpeed.addEventListener('touchstart', (e) => e.stopPropagation(), {passive: false});
+        autoSpeed.addEventListener('mousedown', (e) => e.stopPropagation());
 
-        // --- EQ & Spectrum (Fixed Mapping) ---
+
+        // --- EQ & Spectrum ---
         const eqCanvas = document.getElementById('eq-canvas'); const eqCtx = eqCanvas.getContext('2d'); const eqReadout = document.getElementById('eq-readout');
         const minFreq = 20; const maxFreq = 20000;
         function xToFreq(x, width) { return minFreq * Math.pow(maxFreq / minFreq, x / width); }
@@ -381,9 +377,8 @@
             const w = eqCanvas.width; const h = eqCanvas.height; 
             eqCtx.clearRect(0, 0, w, h);
 
-            // ★ 修正: スペクトラムの軸合わせ
             if (fft) {
-                const values = fft.getValue(); // dB array
+                const values = fft.getValue(); 
                 const nyquist = Tone.context.sampleRate / 2;
                 const fftSize = values.length;
                 
@@ -391,40 +386,29 @@
                 eqCtx.beginPath();
                 eqCtx.moveTo(0, h);
 
-                // 各FFTビンが「どの周波数か」を計算し、それをCanvasのX座標に変換して描画
                 for (let i = 0; i < fftSize; i++) {
                     const db = values[i];
                     if (db === -Infinity) continue;
-                    
-                    // 線形な周波数 (Linear Frequency)
                     const freq = i * (nyquist / fftSize);
-                    
-                    // ログスケールのX座標に変換 (Logarithmic X)
                     const x = freqToX(freq, w);
-                    
                     if (x < 0) continue; 
-                    if (x > w) break; // 画面外に出たら終了
-
-                    const barHeight = Math.max(0, (db + 100) / 100 * h); // -100dB ~ 0dB scale
+                    if (x > w) break; 
+                    const barHeight = Math.max(0, (db + 100) / 100 * h);
                     const y = h - barHeight;
-                    
                     eqCtx.lineTo(x, y);
                 }
                 eqCtx.lineTo(w, h);
                 eqCtx.fill();
             }
 
-            // EQ Grid
             eqCtx.strokeStyle = 'rgba(255,255,255,0.1)'; eqCtx.lineWidth = 1; eqCtx.beginPath();
             [100, 1000, 10000].forEach(f => { const x = freqToX(f, w); eqCtx.moveTo(x, 0); eqCtx.lineTo(x, h); });
             eqCtx.moveTo(0, h/2); eqCtx.lineTo(w, h/2); eqCtx.stroke();
             
-            // EQ Curve
             eqCtx.strokeStyle = '#00ffcc'; eqCtx.lineWidth = 2; eqCtx.beginPath();
             for (let x = 0; x < w; x+=2) { const y = dbToY(getEQResponse(xToFreq(x, w)), h); if (x === 0) eqCtx.moveTo(x, y); else eqCtx.lineTo(x, y); }
             eqCtx.stroke(); 
             
-            // EQ Points
             [ {id:'low', c:'#ff0055'}, {id:'mid', c:'#ffff00'}, {id:'high', c:'#00ccff'} ].forEach(p => {
                 const d = localEQ[p.id]; const x = freqToX(d.freq, w); const y = dbToY(d.gain, h);
                 eqCtx.fillStyle = p.c; eqCtx.beginPath(); eqCtx.arc(x, y, 6, 0, Math.PI*2); eqCtx.fill();
@@ -455,14 +439,21 @@
         eqCanvas.addEventListener('touchstart', e=>{e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,true)},{passive:false}); window.addEventListener('touchmove', e=>{if(draggingPoint){e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,false)}},{passive:false}); window.addEventListener('touchend', endEQDrag);
         
         // --- Mixer & ADSR & Waveform ---
-        const volSynth=document.getElementById('vol-synth'), volDrone=document.getElementById('vol-drone');
+        const volSynth=document.getElementById('vol-synth');
         let lastMixerSync = 0;
-        const updateMixer=(v)=>{localMixer=v; volSynth.value=v.synth; volDrone.value=v.drone; if(synth)synth.volume.value=v.synth; if(droneSynth)droneSynth.volume.value=v.drone;};
-        [volSynth, volDrone].forEach(e=>{
-            e.addEventListener('input',()=>{ updateMixer({synth:parseFloat(volSynth.value),drone:parseFloat(volDrone.value)}); if(Date.now()-lastMixerSync>30){socket.emit('update_mixer',localMixer);lastMixerSync=Date.now();} }); 
-            e.addEventListener('change',()=>socket.emit('update_mixer',localMixer)); 
-            e.addEventListener('touchstart',ev=>ev.stopPropagation(),{passive:false}); e.addEventListener('mousedown',ev=>ev.stopPropagation())
-        });
+        const updateMixer=(v)=>{
+            localMixer=v; 
+            volSynth.value=v.synth; 
+            if(synth)synth.volume.value=v.synth; 
+        };
+        // ★Droneスライダーのイベントリスナーを削除・修正
+        volSynth.addEventListener('input',()=>{ 
+            updateMixer({synth:parseFloat(volSynth.value)}); 
+            if(Date.now()-lastMixerSync>30){socket.emit('update_mixer',localMixer);lastMixerSync=Date.now();} 
+        }); 
+        volSynth.addEventListener('change',()=>socket.emit('update_mixer',localMixer)); 
+        volSynth.addEventListener('touchstart',ev=>ev.stopPropagation(),{passive:false}); 
+        volSynth.addEventListener('mousedown',ev=>ev.stopPropagation());
 
         const waveCanvas=document.getElementById('wave-canvas'), waveCtx=waveCanvas.getContext('2d'), resetBtn=document.getElementById('reset-btn');
         const WAVE_SIZE=128; let waveBuffer=new Array(WAVE_SIZE).fill(0).map((_,i)=>Math.sin((i/WAVE_SIZE)*Math.PI*2));
@@ -603,8 +594,12 @@
             const yPos = -(data.normY - 0.5) * playAreaSize + playAreaOffsetY;
             const pos = new THREE.Vector3(xPos, yPos, 0);
 
+            // ★変更: オート演奏(ID: auto)の場合は色を変える
+            const isAuto = data.id === 'auto';
+            const color = isAuto ? 0xffaa00 : (data.id === socket.id ? 0x00ffcc : 0xff00cc);
+
             const mesh = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.0, 64), new THREE.MeshBasicMaterial({ 
-                color: data.id === socket.id ? 0x00ffcc : 0xff00cc, 
+                color: color, 
                 transparent: true, 
                 side: THREE.DoubleSide,
                 blending: THREE.AdditiveBlending 
@@ -613,7 +608,8 @@
             scene.add(mesh);
             visualObjects.push({ type: 'ring', mesh, startTime: Date.now(), duration: data.duration });
 
-            if (prevNotePos) {
+            // オートの場合は線を描画しない（画面がうるさくなるため）
+            if (prevNotePos && !isAuto) {
                 const points = [prevNotePos.clone(), pos.clone()];
                 const geometry = new THREE.BufferGeometry().setFromPoints(points);
                 const material = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending });
@@ -621,7 +617,7 @@
                 scene.add(line);
                 visualObjects.push({ type: 'line', mesh: line, startTime: Date.now(), duration: data.duration * 2.0 }); 
             }
-            prevNotePos = pos;
+            if(!isAuto) prevNotePos = pos;
         });
 
         socket.on('sync_waveform', d => { waveBuffer=d; resizeCanvases(); updateSynthWave(d); });
@@ -629,6 +625,12 @@
         socket.on('sync_mixer', d => updateMixer(d));
         socket.on('sync_eq', d => { localEQ=d; resizeCanvases(); if(eqLow){ eqLow.frequency.value=d.low.freq; eqLow.gain.value=d.low.gain; eqMid.frequency.value=d.mid.freq; eqMid.gain.value=d.mid.gain; eqHigh.frequency.value=d.high.freq; eqHigh.gain.value=d.high.gain; } });
         socket.on('sync_scale', (scaleName) => { currentScaleName = scaleName; scaleBtns.forEach(btn => { if(btn.dataset.scale === scaleName) btn.classList.add('active'); else btn.classList.remove('active'); }); });
+        
+        // ★オートプレイの状態同期
+        socket.on('sync_auto', (data) => {
+            localAuto = data;
+            updateAutoUI();
+        });
     </script>
 </body>
 </html>
