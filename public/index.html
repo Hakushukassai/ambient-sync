@@ -5,16 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Synth Master Sync</title>
     <style>
+        /* 全体のスクロールは禁止するが、必要な部分は許可する */
         body { margin: 0; overflow: hidden; background: #080808; touch-action: none; color: white; font-family: monospace; }
         
+        /* コントロールパネルのスクロール設定修正 */
         #controls {
             position: fixed; bottom: 0; left: 0; width: 100%; height: 280px; 
             background: linear-gradient(transparent, rgba(0,0,0,0.95) 15%);
             display: flex; flex-direction: row; justify-content: center; align-items: center;
             padding-bottom: 20px; z-index: 50; gap: 15px; box-sizing: border-box;
-            touch-action: pan-x; -webkit-overflow-scrolling: touch;
+            
+            /* ★スマホ修正: 横スクロールを許可 */
+            overflow-x: auto; 
+            touch-action: pan-x; 
+            -webkit-overflow-scrolling: touch;
+            
+            /* デスクトップ用センタリング */
+            justify-content: flex-start;
         }
-        #controls * { touch-action: pan-x; }
+
+        /* スクロールバーは隠す */
+        #controls::-webkit-scrollbar { display: none; }
 
         .panel-section {
             display: flex; flex-direction: column; align-items: center;
@@ -22,8 +33,18 @@
             padding: 10px;
             backdrop-filter: blur(10px); width: 260px; height: 210px;
             justify-content: flex-start; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
-            flex-shrink: 0; position: relative; transition: transform 0.2s, box-shadow 0.2s;
+            flex-shrink: 0; position: relative; 
+            
+            /* スクロール時のスナップ */
+            scroll-snap-align: center; margin-right: 5px;
         }
+        
+        /* PC画面では中央寄せ */
+        @media (min-width: 1100px) { 
+            #controls { justify-content: center; overflow-x: visible; } 
+            .panel-section { margin-right: 0; }
+        }
+
         .panel-section:hover { border-color: #555; box-shadow: 0 0 20px rgba(0, 255, 204, 0.1); }
         .panel-section::after {
             content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px;
@@ -32,10 +53,10 @@
         
         .label { font-size: 11px; color: #00ffcc; margin-bottom: 8px; letter-spacing: 2px; text-shadow: 0 0 8px rgba(0,255,204,0.6); font-weight: bold; text-transform: uppercase; pointer-events: none; }
 
-        #wave-canvas, #eq-canvas, #adsr-canvas { background: rgba(0, 0, 0, 0.5); border: 1px solid #444; border-radius: 4px; box-shadow: inset 0 0 15px rgba(0,0,0,0.8); width: 240px; }
+        #wave-canvas, #eq-canvas, #adsr-canvas { background: rgba(0, 0, 0, 0.5); border: 1px solid #444; border-radius: 4px; box-shadow: inset 0 0 15px rgba(0,0,0,0.8); width: 240px; touch-action: none; }
         
-        #wave-canvas { height: 90px; cursor: crosshair; touch-action: none; user-select: none; }
-        #eq-canvas { height: 100px; cursor: default; touch-action: none; }
+        #wave-canvas { height: 90px; cursor: crosshair; }
+        #eq-canvas { height: 100px; cursor: default; }
         #adsr-canvas { height: 70px; }
 
         .eq-values { font-size: 10px; color: #888; width: 100%; text-align: center; margin-top: 5px; font-family: monospace; pointer-events: none; }
@@ -44,12 +65,15 @@
         .sliders { display: flex; gap: 10px; width: 100%; justify-content: space-between; margin-top: 5px; }
         .slider-group { display: flex; flex-direction: column; align-items: center; position: relative; }
         
+        /* ★スマホ修正: スライダー操作時に画面がスクロールしないようにする */
         input[type=range].vertical {
             -webkit-appearance: none; appearance: none; width: 30px; height: 100px;
             background: transparent; outline: none; writing-mode: bt-lr; -webkit-appearance: slider-vertical;
             cursor: pointer; position: relative; z-index: 2;
             background: linear-gradient(to right, transparent 13px, #222 13px, #222 17px, transparent 17px);
-            touch-action: pan-x; 
+            
+            /* 重要: スライダー操作時はスクロール禁止 */
+            touch-action: none; 
         }
         input[type=range].vertical::-webkit-slider-thumb {
             -webkit-appearance: none; width: 28px; height: 14px; background: #000; 
@@ -71,6 +95,7 @@
         .scale-grid { 
             display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; margin-top: 5px; height: 100%; 
             overflow-y: auto; align-content: start; 
+            /* グリッド内の縦スクロールは許可 */
             touch-action: pan-y; 
         }
         .scale-btn { 
@@ -130,7 +155,7 @@
         <span>PLAY INSIDE THE SQUARE</span>
     </div>
 
-    <div id="version-display">v1.4 - FULL SYNC FIX</div>
+    <div id="version-display">v1.5 - MOBILE FIX & SYNC REPAIR</div>
 
     <button id="sensor-btn">SENSOR: OFF</button>
     
@@ -364,7 +389,6 @@
             globalFilter = new Tone.Filter(4000, "lowpass", -12);
             panner = new Tone.Panner(0);
 
-            // Apply Current State to Tone.js Nodes
             eqLow = new Tone.Filter({ type: "lowshelf", frequency: localEQ.low.freq, gain: localEQ.low.gain, rolloff: -12 });
             eqMid = new Tone.Filter({ type: "peaking", frequency: localEQ.mid.freq, gain: localEQ.mid.gain, Q: 2.5 });
             eqHigh = new Tone.Filter({ type: "highshelf", frequency: localEQ.high.freq, gain: localEQ.high.gain, rolloff: -12 });
@@ -414,16 +438,16 @@
             else if (target === 'PAN') { const panVal = (val * 2) - 1; if(panner) panner.pan.rampTo(panVal, 0.1); } 
             else if (target === 'VOL') { 
                 const vol = (val * 60) - 60; synth.volume.rampTo(vol, 0.1); 
-                volSynth.value = vol; // UI Sync
+                volSynth.value = vol; // Force UI Update
             } 
             else if (target === 'REVERB') { if(reverb) reverb.wet.rampTo(val, 0.1); } 
             else if (target === 'DECAY') { 
                 const d = 0.1 + (val * 1.9); synth.set({ envelope: { decay: d } }); 
-                slD.value = d; drawADSRVisual(); // UI Sync
+                slD.value = d; drawADSRVisual(); // Force UI Update
             } 
             else if (target === 'RELEASE') { 
                 const r = 0.1 + (val * 4.9); synth.set({ envelope: { release: r } }); 
-                slR.value = r; drawADSRVisual(); // UI Sync
+                slR.value = r; drawADSRVisual(); // Force UI Update
             }
         }
 
@@ -468,8 +492,7 @@
             else { sensorBtn.textContent = "SENSOR: OFF"; sensorBtn.classList.remove("active"); window.removeEventListener('deviceorientation', handleSensor); }
         }
 
-        // --- Server Sync Handlers (Fixing the "Nothing is syncing" issue) ---
-        // UI must update immediately when data arrives.
+        // --- Socket Sync Logic (FIXED) ---
 
         socket.on('sync_all_params', (params) => {
             for (const [key, val] of Object.entries(params)) { applyAudioParam(key, val); updateSensorVisuals(key, val); }
@@ -478,13 +501,13 @@
 
         socket.on('sync_waveform', d => { 
             waveBuffer = d; 
-            drawWave(waveBuffer); // UI
-            if(synth) updateSynthWave(d); // Audio
+            drawWave(waveBuffer); 
+            if(synth) updateSynthWave(d); 
         });
 
         socket.on('sync_adsr', d => { 
             localADSR = d; 
-            // UI Update (Important for sync)
+            // DOM FORCE UPDATE
             slA.value=d.attack; slD.value=d.decay; slS.value=d.sustain; slR.value=d.release; 
             drawADSRVisual(); 
             if(synth) synth.set({envelope:d}); 
@@ -492,19 +515,17 @@
 
         socket.on('sync_mixer', d => {
             localMixer = d;
-            volSynth.value = d.synth; // UI Update
+            volSynth.value = d.synth; // DOM FORCE UPDATE
             if(synth) synth.volume.value = d.synth;
         });
 
         socket.on('sync_eq', d => { 
             localEQ = d; 
-            // Canvas handles visual update in loop, but we force redraw
             if(eqLow){ eqLow.frequency.value=d.low.freq; eqLow.gain.value=d.low.gain; eqMid.frequency.value=d.mid.freq; eqMid.gain.value=d.mid.gain; eqHigh.frequency.value=d.high.freq; eqHigh.gain.value=d.high.gain; } 
         });
 
         socket.on('sync_scale', (scaleName) => { 
             currentScaleName = scaleName; 
-            // UI Highlight Sync
             scaleBtns.forEach(btn => { 
                 if(btn.dataset.scale === scaleName) btn.classList.add('active'); 
                 else btn.classList.remove('active'); 
@@ -513,14 +534,14 @@
 
         socket.on('sync_auto', (data) => {
             localAuto = data;
-            // UI Sync
             if(localAuto.active) { autoBtn.textContent = "AUTO: ON"; autoBtn.classList.add("active"); } 
             else { autoBtn.textContent = "AUTO: OFF"; autoBtn.classList.remove("active"); }
             autoSpeed.value = localAuto.speed;
         });
 
 
-        // --- UI Event Listeners (Emit Logic) ---
+        // --- UI Events (Emit) ---
+        // ★ スマホ対策: イベントリスナーを単純化し、touch-actionはCSSに任せる
 
         // Auto
         let lastAutoSync = 0;
@@ -542,7 +563,7 @@
             drawADSRVisual(); if(synth)synth.set({envelope:localADSR}); 
             if(Date.now() - lastAdsrSync > 30) { socket.emit('update_adsr',localADSR); lastAdsrSync = Date.now(); }
         };
-        [slA,slD,slS,slR].forEach(s=>{ s.addEventListener('input',updateADSR); s.addEventListener('touchstart',e=>e.stopPropagation(),{passive:false}); });
+        [slA,slD,slS,slR].forEach(s=>{ s.addEventListener('input',updateADSR); }); // StopPropagation削除
 
         // Waveform
         let lastWaveSync = 0; let isDrawingWave=false;
