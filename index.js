@@ -54,12 +54,15 @@ let currentScaleName = "MYSTERIOUS";
 let autoPlayState = { active: false, speed: 30 };
 let autoPlayTimeout = null;
 
-// ★センサー管理
-// values: 実際の傾き (0.0 - 1.0)
-// targets: 何を操作するか (例: 'FILTER', 'REVERB')
-let currentSensor = {
-    values: { x: 0.5, y: 0.0 }, 
-    targets: { x: 'FILTER', y: 'REVERB' } 
+// ★新機能: グローバルなパラメータ状態 (全員で共有する値)
+// 各値は 0.0 〜 1.0 の範囲
+let globalParams = {
+    'FILTER': 0.5,
+    'PAN': 0.5,     // 0.5がセンター
+    'VOL': 0.8,
+    'REVERB': 0.0,
+    'DECAY': 0.2,   // ADSRのD相当(正規化値)
+    'RELEASE': 0.3  // ADSRのR相当(正規化値)
 };
 
 function scheduleNextAutoNote() {
@@ -99,7 +102,9 @@ io.on('connection', (socket) => {
     socket.emit('sync_eq', currentEQ); 
     socket.emit('sync_scale', currentScaleName);
     socket.emit('sync_auto', autoPlayState);
-    socket.emit('sync_sensor', currentSensor);
+    
+    // ★接続時に全パラメータの現状を送る
+    socket.emit('sync_all_params', globalParams);
 
     socket.on('play_note', (data) => {
         io.emit('trigger_note', { ...data, id: socket.id });
@@ -149,16 +154,13 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ★センサー値の更新 (高頻度)
-    socket.on('update_sensor_values', (data) => {
-        currentSensor.values = data;
-        socket.broadcast.emit('sync_sensor_values', currentSensor.values);
-    });
-
-    // ★センサーターゲットの更新 (低頻度)
-    socket.on('update_sensor_targets', (data) => {
-        currentSensor.targets = data;
-        io.emit('sync_sensor_targets', currentSensor.targets);
+    // ★特定のパラメータ更新を受け取る (例: { target: 'FILTER', value: 0.8 })
+    socket.on('update_param', (data) => {
+        if (data && data.target && typeof data.value === 'number') {
+            globalParams[data.target] = data.value;
+            // 全員に即座に共有
+            socket.broadcast.emit('sync_param', data);
+        }
     });
 
     socket.on('disconnect', () => {
