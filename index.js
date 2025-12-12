@@ -43,32 +43,32 @@ let currentWaveform = new Array(WAVE_SIZE).fill(0).map((_, i) =>
     Math.sin((i / WAVE_SIZE) * Math.PI * 2)
 );
 
-let currentADSR = { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1.5 };
-let currentMixer = { synth: -4 };
+// EQ (Low/Mid/High Gain)
 let currentEQ = {
     low:  { freq: 100,  gain: 4 },
     mid:  { freq: 1000, gain: -2 },
     high: { freq: 5000, gain: -6 }
 };
+
 let currentScaleName = "MYSTERIOUS";
 let autoPlayState = { active: false, speed: 30 };
 let autoPlayTimeout = null;
 
+// 全パラメータ (0.0 - 1.0)
 let globalParams = {
     'FILTER': 0.5,
     'PAN': 0.5,
     'VOL': 0.8,
     'REVERB': 0.0,
-    'ATTACK': 0.05, // ADSR A
-    'DECAY': 0.1,   // ADSR D
-    'SUSTAIN': 0.5, // ADSR S
-    'RELEASE': 0.3  // ADSR R
+    'ATTACK': 0.05,
+    'DECAY': 0.1,
+    'SUSTAIN': 0.5,
+    'RELEASE': 0.3
 };
 
-// ★ユーザー管理
+// ユーザー管理
 let connectedUsers = {};
 
-// ランダムカラー生成
 function getRandomColor() {
     const letters = '0123456789ABCDEF';
     let color = '#';
@@ -107,32 +107,32 @@ function playAutoNote() {
 }
 
 io.on('connection', (socket) => {
-    // ★ユーザー登録と色割り当て
+    // ユーザー登録
     const userColor = getRandomColor();
     connectedUsers[socket.id] = { color: userColor };
     
-    console.log('User connected:', socket.id, userColor);
+    console.log(`User connected: ${socket.id} (${userColor})`);
 
-    // 全員に現在のユーザー数と情報を送る
-    io.emit('update_users', { count: Object.keys(connectedUsers).length, users: connectedUsers });
+    // 全員にユーザーリスト更新を通知
+    io.emit('update_users', connectedUsers);
 
-    // 初期データ送信
+    // 新規ユーザーへ初期データ送信
     socket.emit('init_setup', {
-        id: socket.id, // 自分のIDを教える
-        color: userColor, // 自分の色を教える
+        id: socket.id,
+        color: userColor,
         waveform: currentWaveform,
-        adsr: currentADSR,
-        mixer: currentMixer,
         eq: currentEQ,
         scale: currentScaleName,
         auto: autoPlayState,
         params: globalParams
     });
 
+    // 演奏イベント
     socket.on('play_note', (data) => {
         io.emit('trigger_note', { ...data, id: socket.id });
     });
 
+    // 波形更新
     socket.on('update_waveform', (data) => {
         if (Array.isArray(data)) {
             currentWaveform = data;
@@ -140,20 +140,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('update_adsr', (data) => {
-        if (data) {
-            currentADSR = data;
-            socket.broadcast.emit('sync_adsr', { data: currentADSR, userId: socket.id });
-        }
-    });
-
-    socket.on('update_mixer', (data) => {
-        if (data) {
-            currentMixer = data;
-            socket.broadcast.emit('sync_mixer', { data: currentMixer, userId: socket.id });
-        }
-    });
-
+    // EQ更新 (Gain/Freq)
     socket.on('update_eq', (data) => {
         if (data) {
             currentEQ = data;
@@ -161,15 +148,18 @@ io.on('connection', (socket) => {
         }
     });
 
+    // スケール更新
     socket.on('update_scale', (scaleName) => {
         currentScaleName = scaleName;
         io.emit('sync_scale', { scale: currentScaleName, userId: socket.id });
     });
 
+    // オートプレイ更新
     socket.on('update_auto', (data) => {
         const wasActive = autoPlayState.active;
         autoPlayState = data;
         io.emit('sync_auto', { data: autoPlayState, userId: socket.id });
+        
         if (autoPlayState.active && !wasActive) {
             scheduleNextAutoNote();
         } else if (!autoPlayState.active) {
@@ -177,10 +167,11 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ★パラメータ更新: 誰が更新したか(userId)を付与して送信
+    // パラメータ更新 (FILTER, ADSR, etc)
     socket.on('update_param', (data) => {
         if (data && data.target && typeof data.value === 'number') {
             globalParams[data.target] = data.value;
+            // 更新者IDを付けてブロードキャスト
             socket.broadcast.emit('sync_param', { 
                 target: data.target, 
                 value: data.value, 
@@ -191,7 +182,7 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         delete connectedUsers[socket.id];
-        io.emit('update_users', { count: Object.keys(connectedUsers).length, users: connectedUsers });
+        io.emit('update_users', connectedUsers);
         console.log('User disconnected:', socket.id);
     });
 });
