@@ -379,78 +379,88 @@
         let isSensorActive = false;
         let lastSensorSync = 0;
         
-        // ★ターゲット候補と自分の役割 (ローカルのみ)
         const TARGETS_X = ['FILTER', 'PAN', 'VOL'];
         const TARGETS_Y = ['REVERB', 'DECAY', 'RELEASE'];
         let myTargets = { x: 'FILTER', y: 'REVERB' };
 
-        function updateSensorVisuals(target, val) {
-            // もし自分のUIで表示しているターゲットと同じパラメータが来たらバーを更新
-            if (myTargets.x === target) fillX.style.height = (val * 100) + "%";
-            if (myTargets.y === target) fillY.style.height = (val * 100) + "%";
-        }
-
-        // ★パッチング処理: ターゲット名に応じて音を変える (受信・送信共通)
+        // ★ 音声だけでなくUIも更新する関数 (全員共有)
         function applyAudioParam(target, val) {
             if (!synth) return;
 
             if (target === 'FILTER') {
-                const freq = 100 * Math.pow(80, val); // 100~8000Hz
+                const freq = 100 * Math.pow(80, val); 
                 if(globalFilter) globalFilter.frequency.rampTo(freq, 0.1);
-            } else if (target === 'PAN') {
-                // 0~1 -> -1~1
+            } 
+            else if (target === 'PAN') {
                 const panVal = (val * 2) - 1;
                 if(panner) panner.pan.rampTo(panVal, 0.1);
-            } else if (target === 'VOL') {
-                // 0~1 -> -60~0 dB
+            } 
+            else if (target === 'VOL') {
                 const vol = (val * 60) - 60;
                 synth.volume.rampTo(vol, 0.1);
-            } else if (target === 'REVERB') {
+                // ★UI更新: スライダーを動かす
+                const volSlider = document.getElementById('vol-synth');
+                if(volSlider) volSlider.value = vol;
+            } 
+            else if (target === 'REVERB') {
                 if(reverb) reverb.wet.rampTo(val, 0.1);
-            } else if (target === 'DECAY') {
-                // 0~1 -> 0.1~2.0s
+            } 
+            else if (target === 'DECAY') {
+                // val(0-1) -> 0.1-2.0
                 const d = 0.1 + (val * 1.9);
                 synth.set({ envelope: { decay: d } });
-            } else if (target === 'RELEASE') {
-                // 0~1 -> 0.1~5.0s
+                // ★UI更新: ADSRスライダーとグラフ
+                const dSlider = document.getElementById('adsr-d');
+                if(dSlider) {
+                    dSlider.value = d;
+                    drawADSRVisual(); // グラフ再描画
+                }
+            } 
+            else if (target === 'RELEASE') {
+                // val(0-1) -> 0.1-5.0
                 const r = 0.1 + (val * 4.9);
                 synth.set({ envelope: { release: r } });
+                // ★UI更新: ADSRスライダーとグラフ
+                const rSlider = document.getElementById('adsr-r');
+                if(rSlider) {
+                    rSlider.value = r;
+                    drawADSRVisual(); // グラフ再描画
+                }
             }
+        }
+
+        function updateSensorVisuals(target, val) {
+            // 自分が見ているメーターと同じターゲットなら動かす
+            if (myTargets.x === target) fillX.style.height = (val * 100) + "%";
+            if (myTargets.y === target) fillY.style.height = (val * 100) + "%";
         }
 
         function handleSensor(e) {
             if (!isStarted || !isSensorActive) return;
             
-            // X (左右): 0~1
             const gamma = e.gamma || 0; 
             const normGamma = Math.max(-1, Math.min(1, gamma / 45)); 
             const valX = (normGamma + 1) / 2; 
 
-            // Y (前後): 0~1
             const beta = e.beta || 0; 
             const normBeta = Math.max(-1, Math.min(1, (beta - 45) / 45));
             const valY = (1.0 - ((normBeta + 1) / 2)); 
 
-            // 1. 自分の音を変える
+            // 即時反映
             applyAudioParam(myTargets.x, valX);
             applyAudioParam(myTargets.y, valY);
-            
-            // 2. 自分の見た目を変える
             updateSensorVisuals(myTargets.x, valX);
             updateSensorVisuals(myTargets.y, valY);
 
-            // 3. サーバーに「役割」ごとの値を送信 (間引き)
+            // 送信
             const now = Date.now();
             if (now - lastSensorSync > 100) {
-                // X軸の担当パラメータを送信
                 socket.emit('update_param', { target: myTargets.x, value: valX });
-                // Y軸の担当パラメータを送信
                 socket.emit('update_param', { target: myTargets.y, value: valY });
                 lastSensorSync = now;
             }
         }
 
-        // ターゲット切り替えボタン
         targetXBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const idx = TARGETS_X.indexOf(myTargets.x);
@@ -467,7 +477,6 @@
         });
         targetYBtn.addEventListener('touchstart', e=>e.stopPropagation(),{passive:false});
 
-        // センサー起動
         sensorBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -494,9 +503,8 @@
             }
         }
 
-        // --- 受信イベント ---
+        // --- 受信イベント (全員同期) ---
         
-        // ★初期同期: 全パラメータを受け取る
         socket.on('sync_all_params', (params) => {
             for (const [key, val] of Object.entries(params)) {
                 applyAudioParam(key, val);
@@ -504,11 +512,8 @@
             }
         });
 
-        // ★誰かがパラメータを変更した
         socket.on('sync_param', (data) => {
-            // 音を変える
             applyAudioParam(data.target, data.value);
-            // もし自分が見ているターゲットと同じなら、メーターも動かす
             updateSensorVisuals(data.target, data.value);
         });
 
