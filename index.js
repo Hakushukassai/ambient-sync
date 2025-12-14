@@ -54,19 +54,21 @@ let currentEQ = {
 let currentScaleName = "MYSTERIOUS";
 let autoPlayState = { active: false, speed: 30 };
 let autoPlayTimeout = null;
+let autoParamInterval = null; // ★追加: パラメータ自動変動用タイマー
 
-// ★変更: DELAYを分割
 let globalParams = {
     'FILTER': 0.5,
     'PAN': 0.5,
     'VOL': 0.8,
     'REVERB': 0.0,
-    'DELAY_FB': 0.3,  // Feedback
-    'DELAY_MIX': 0.0, // Mix (Wet)
+    'DELAY_FB': 0.3,
+    'DELAY_MIX': 0.0,
     'DECAY': 0.1,
     'RELEASE': 0.3,
     'FREQ': 0.3
 };
+
+// --- 自動演奏ロジック ---
 
 function scheduleNextAutoNote() {
     if (autoPlayTimeout) clearTimeout(autoPlayTimeout);
@@ -98,6 +100,38 @@ function playAutoNote() {
         id: 'auto'
     });
 }
+
+// ★追加: パラメータをゆらめかせる機能 (Ghost User)
+function startAutoParamDrift() {
+    if (autoParamInterval) clearInterval(autoParamInterval);
+    
+    // 150msごとにパラメータを少し動かす
+    autoParamInterval = setInterval(() => {
+        // 変動させるパラメータの候補（音量や周波数は激しく動くと困るので除外気味に）
+        const keys = ['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX', 'DECAY', 'RELEASE'];
+        const key = keys[Math.floor(Math.random() * keys.length)];
+        
+        let val = globalParams[key];
+        // -0.05 〜 +0.05 の範囲でランダムに加算（ランダムウォーク）
+        const drift = (Math.random() - 0.5) * 0.08; 
+        val += drift;
+        
+        // 0.0〜1.0に制限
+        val = Math.max(0, Math.min(1, val));
+        
+        globalParams[key] = val;
+        
+        // 全員に送信（これでクライアントのカーソルも動く）
+        io.emit('sync_param', { target: key, value: val });
+        
+    }, 150);
+}
+
+function stopAutoParamDrift() {
+    if (autoParamInterval) clearInterval(autoParamInterval);
+    autoParamInterval = null;
+}
+
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
@@ -157,10 +191,14 @@ io.on('connection', (socket) => {
         const wasActive = autoPlayState.active;
         autoPlayState = data;
         io.emit('sync_auto', autoPlayState);
+        
+        // ★変更: AUTOON/OFFに合わせてパラメータ変動も開始/停止
         if (autoPlayState.active && !wasActive) {
             scheduleNextAutoNote();
+            startAutoParamDrift(); // 開始
         } else if (!autoPlayState.active) {
             if (autoPlayTimeout) clearTimeout(autoPlayTimeout);
+            stopAutoParamDrift();  // 停止
         }
     });
 
