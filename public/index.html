@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Synth Master Sync v2.6 - PERFECT ALIGN</title>
+    <title>Synth Master Sync v2.7 - SYNCED GRAVITY</title>
     <style>
         /* --- Base Aesthetic --- */
         body { margin: 0; overflow: hidden; background: #050505; touch-action: none; color: #ccc; font-family: 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.05em; }
@@ -58,16 +58,15 @@
         .mixer-container { display: flex; gap: 20px; height: 100%; align-items: center; justify-content: center; width: 100%; }
         #adsr-container { display: flex; flex-direction: column; align-items: center; width: 100%; }
         
-        /* Sliders Layout Adjustment */
+        /* Sliders Layout */
         .sliders { display: flex; gap: 2px; width: 100%; justify-content: space-between; margin-top: 10px; height: 100px; }
         .slider-group { 
             display: flex; flex-direction: column; align-items: center; flex: 1; 
-            height: 100%; justify-content: flex-end; /* Align labels to bottom */
+            height: 100%; justify-content: flex-end; 
             position: relative;
         }
         
-        /* --- PERFECT CENTERED SLIDERS (Rotated Horizontal) --- */
-        /* コンテナ内でスライダーを回転させるためのラッパー */
+        /* Rotated Horizontal Sliders for Perfect Center */
         .slider-wrapper {
             width: 30px; height: 80px;
             display: flex; align-items: center; justify-content: center;
@@ -75,45 +74,25 @@
 
         input[type=range].vertical {
             -webkit-appearance: none; appearance: none;
-            width: 80px; /* 長さ (回転前は横幅) */
-            height: 30px; /* タッチ領域の太さ */
+            width: 80px; height: 30px;
             background: transparent;
-            transform: rotate(-90deg); /* 90度回転して縦にする */
+            transform: rotate(-90deg);
             cursor: pointer; margin: 0;
         }
 
-        /* Track (Bar) */
         input[type=range].vertical::-webkit-slider-runnable-track {
-            width: 100%; height: 4px;
-            background: #222; border-radius: 2px;
-            border: none;
+            width: 100%; height: 4px; background: #222; border-radius: 2px; border: none;
         }
         input[type=range].vertical::-moz-range-track {
-            width: 100%; height: 4px;
-            background: #222; border-radius: 2px;
-            border: none;
+            width: 100%; height: 4px; background: #222; border-radius: 2px; border: none;
         }
 
-        /* Thumb (Knob) - Perfect Center */
         input[type=range].vertical::-webkit-slider-thumb {
             -webkit-appearance: none;
-            height: 14px; width: 8px; /* 回転しているので、ここでのwidthが画面上の「高さ」になりますが、視覚的には width=8px, height=14px の長方形 */
-            /* いや、回転しているので、widthが画面上の「縦幅」、heightが「横幅」になる */
-            /* 直感的に操作するために： */
-            /* 横向きスライダー時の width: スライダーの進行方向のサイズ */
-            /* 横向きスライダー時の height: スライダーの太さ方向のサイズ */
-            width: 14px; height: 20px; /* タッチしやすいサイズ */
-            
-            /* 見た目を作る (Box Shadow等で実際のツマミの形を描く) */
-            background: transparent; 
-            border: none; margin-top: -8px; /* (TrackHeight 4px - ThumbHeight 20px) / 2 = -8px でセンタリング */
-            
-            /* 実際の白い棒を描画 */
-            box-shadow: inset 0 0 0 4px transparent, inset 0 0 0 6px #ccc; 
-            /* ↑これはハックなので、シンプルにbackground指定に戻します */
+            width: 8px; height: 16px;
             background: #ccc; border: 1px solid #fff; border-radius: 2px;
-            width: 8px; height: 16px; /* 回転後の見た目サイズ */
-            margin-top: -6px; /* (4px - 16px)/2 = -6 */
+            margin-top: -6px; 
+            box-shadow: 0 0 5px rgba(255,255,255,0.2);
         }
 
         input[type=range].vertical::-moz-range-thumb {
@@ -189,7 +168,7 @@
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v2.6 - PERFECT ALIGN</div>
+    <div id="version-display">v2.7 - SYNCED GRAVITY</div>
 
     <button id="mode-btn">MODE: TOUCH</button>
     <button id="sensor-btn">SENSOR: OFF</button>
@@ -291,7 +270,7 @@
         let playAreaMesh;
         let playAreaOffsetY = 0; 
         let prevNotePos = null;
-        const isPC = window.innerWidth >= 1024; // PC判定フラグ
+        const isPC = window.innerWidth >= 1024; 
 
         // --- Visuals & Physics ---
         const scene = new THREE.Scene();
@@ -312,16 +291,15 @@
         let meterCurrentVal = { x: 0, y: 0 };
         
         const balls = [];
-        const GRAVITY = 1.2; 
+        // ★重要: 重力と速度を「正規化座標(0-1)」ベースに変更
+        const GRAVITY_NORMALIZED = 0.015; // 画面高さの1.5%ずつ加速
         const BOUNCE_DAMPING = 0.7; 
 
-        // Cursor: Simple Ring
         const cursorGeo = new THREE.RingGeometry(0.8, 1.0, 32); 
         const cursorMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: isPC ? 0.6 : 0.3 });
         sensorCursor = new THREE.Mesh(cursorGeo, cursorMat);
         scene.add(sensorCursor);
         
-        // Force Field
         const forceFieldGeo = new THREE.RingGeometry(0.95, 1.0, 64);
         const forceFieldMat = new THREE.MeshBasicMaterial({ color: 0xaaccff, transparent: true, opacity: 0.0, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
         const forceFieldMesh = new THREE.Mesh(forceFieldGeo, forceFieldMat);
@@ -389,16 +367,23 @@
             if(Math.abs(meterTargetVal.x - meterCurrentVal.x) > 0.001) fillX.style.height = (meterCurrentVal.x * 100) + "%";
             if(Math.abs(meterTargetVal.y - meterCurrentVal.y) > 0.001) fillY.style.height = (meterCurrentVal.y * 100) + "%";
 
-            // Physics Update
-            const dt = 0.5; 
-            const floorY = -(playAreaSize / 2) + playAreaOffsetY;
+            // Physics Update (Normalized)
+            const dt = 1.0; // Fixed time step assumption for simplicity in normalized space
             
-            let forcePos = null;
+            // Force Field Logic (Normalized)
+            let forceNormPos = null;
             if (physicsMode && isPointerDown && currentPointerPos) {
                  const cx = (currentPointerPos.x - window.innerWidth/2);
-                 const cy = -(currentPointerPos.y - window.innerHeight/2);
-                 forcePos = new THREE.Vector3(cx, cy, 0);
-                 forceFieldMesh.position.copy(forcePos);
+                 const cy = -(currentPointerPos.y - window.innerHeight/2) + playAreaOffsetY;
+                 
+                 // Pixel to Norm
+                 const nx = (cx / playAreaSize) + 0.5;
+                 const ny = (cy / playAreaSize) + 0.5;
+
+                 forceNormPos = { x: nx, y: ny };
+                 
+                 // Render Force Mesh (Convert back to pixels for rendering)
+                 forceFieldMesh.position.set(cx, cy - playAreaOffsetY, 0); // Correct offset for rendering
                  const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.1;
                  forceFieldMesh.scale.set(playAreaSize*0.15*pulse, playAreaSize*0.15*pulse, 1);
                  forceFieldMesh.material.opacity = 0.4; 
@@ -408,40 +393,52 @@
 
             for (let i = balls.length - 1; i >= 0; i--) {
                 const b = balls[i];
-                b.vy -= GRAVITY * dt;
                 
-                if (forcePos) {
-                    const dx = b.mesh.position.x - forcePos.x;
-                    const dy = b.mesh.position.y - forcePos.y;
+                // 1. Apply Gravity (Normalized)
+                b.vy -= GRAVITY_NORMALIZED * dt;
+                
+                // 2. Apply Force Field (Normalized)
+                if (forceNormPos) {
+                    const dx = b.x - forceNormPos.x;
+                    const dy = b.y - forceNormPos.y;
                     const dist = Math.sqrt(dx*dx + dy*dy);
-                    if (dist < playAreaSize * 0.2) {
-                        const force = (playAreaSize * 0.2 - dist) * 0.05;
+                    // Force Radius = 0.2 (20% of screen)
+                    if (dist < 0.2) {
+                        const force = (0.2 - dist) * 0.08;
                         b.vx = (b.vx || 0) + (dx / dist) * force;
                         b.vy += (dy / dist) * force;
                     }
                 }
                 
-                b.mesh.position.x += (b.vx || 0);
-                b.vx = (b.vx || 0) * 0.95; 
-                b.mesh.position.y += b.vy * dt;
+                // 3. Move Ball (Normalized)
+                b.x += (b.vx || 0);
+                b.vx = (b.vx || 0) * 0.95; // Drag
+                b.y += b.vy * dt;
 
-                const limit = playAreaSize / 2;
-                if (b.mesh.position.x > limit) { b.mesh.position.x = limit; b.vx *= -1; }
-                if (b.mesh.position.x < -limit) { b.mesh.position.x = -limit; b.vx *= -1; }
+                // 4. Wall Collisions (Normalized bounds 0-1)
+                if (b.x > 1.0) { b.x = 1.0; b.vx *= -1; }
+                if (b.x < 0.0) { b.x = 0.0; b.vx *= -1; }
 
-                if (b.mesh.position.y < floorY + b.radius) {
-                    b.mesh.position.y = floorY + b.radius;
+                // 5. Floor Collision (Normalized 0)
+                if (b.y < 0.0) {
+                    b.y = 0.0;
                     b.vy *= -BOUNCE_DAMPING;
 
-                    if (Math.abs(b.vy) > 2.0) {
-                        const normX = ((b.mesh.position.x) / playAreaSize) + 0.5;
-                        triggerNoteFromPhysics(normX, Math.abs(b.vy) / 20.0);
-                    } else if (Math.abs(b.vy) < 0.5 && b.mesh.position.y < floorY + b.radius + 1) {
+                    if (Math.abs(b.vy) > 0.02) {
+                        triggerNoteFromPhysics(b.x, Math.abs(b.vy) * 10.0);
+                    } else if (Math.abs(b.vy) < 0.01 && b.y < 0.01) {
+                         // Stop spawning visuals
                          scene.remove(b.mesh);
                          balls.splice(i, 1);
                          continue;
                     }
                 }
+
+                // 6. Update Visual Mesh (Normalized -> Pixel)
+                // Center is (0,0), so 0.5 is subtracted
+                const pixelX = (b.x - 0.5) * playAreaSize;
+                const pixelY = (b.y - 0.5) * playAreaSize + playAreaOffsetY;
+                b.mesh.position.set(pixelX, pixelY, 0);
             }
 
             const now = Date.now();
@@ -889,9 +886,11 @@
             const ballGeo = new THREE.SphereGeometry(playAreaSize * 0.02, 16, 16);
             const ballMat = new THREE.MeshBasicMaterial({ color: color, wireframe: true });
             const ballMesh = new THREE.Mesh(ballGeo, ballMat);
-            const wX = (x - 0.5) * playAreaSize; const wY = -(y - 0.5) * playAreaSize + playAreaOffsetY;
+            // x, y are normalized (0-1)
+            const wX = (x - 0.5) * playAreaSize; 
+            const wY = (y - 0.5) * playAreaSize + playAreaOffsetY;
             ballMesh.position.set(wX, wY, 0); scene.add(ballMesh);
-            balls.push({ mesh: ballMesh, vy: 0, vx: 0, radius: playAreaSize * 0.02, id: id });
+            balls.push({ mesh: ballMesh, vy: 0, vx: 0, x: x, y: y, id: id });
         }
         let currentPointerPos = null;
         function handleInput(e, isMove) {
@@ -908,8 +907,25 @@
             const w = window.innerWidth; const h = window.innerHeight;
             const centerX = w / 2; const centerY = (h / 2) - playAreaOffsetY;
             const normX = ((cX - centerX) / playAreaSize) + 0.5; const normY = ((cY - centerY) / playAreaSize) + 0.5;
+            
+            // Normalized conversion for Physics Mode (0 = Bottom, 1 = Top relative to playArea)
+            // normY from handleInput is 0=Top(Screen), 1=Bottom(Screen) inverted?
+            // Actually in Three.js coord: Y is up.
+            // Let's rely on normX/normY as 0..1 from Top Left usually in DOM
+            // My handleInput logic: normY = ((cY - centerY) / playAreaSize) + 0.5
+            // This normY is 0 at top, 1 at bottom?
+            // Let's re-verify:
+            // cY small (top) -> normY small. cY large (bottom) -> normY large.
+            // So 0 is top, 1 is bottom.
+            // BUT physics needs 0 = floor.
+            // So we need to invert normY for physics spawn.
+            const physY = 1.0 - normY;
+
             if (physicsMode) {
-                if (!isMove && normX >= 0 && normX <= 1 && normY >= 0 && normY <= 1) { spawnBallVisual(normX, normY, socket.id, true); socket.emit('spawn_ball', { x: normX, y: normY }); }
+                if (!isMove && normX >= 0 && normX <= 1 && physY >= 0 && physY <= 1) { 
+                    spawnBallVisual(normX, physY, socket.id, true); 
+                    socket.emit('spawn_ball', { x: normX, y: physY }); 
+                }
             } else {
                 if (isMove) { const now = Date.now(); if (now - lastMoveNoteTime > MOVE_NOTE_INTERVAL) { triggerNoteFromInput(normX, normY); lastMoveNoteTime = now; } } 
                 else { triggerNoteFromInput(normX, normY); lastMoveNoteTime = Date.now(); }
@@ -924,7 +940,6 @@
         window.addEventListener('mousedown', onPointerDown); window.addEventListener('mousemove', onPointerMove); window.addEventListener('mouseup', onPointerUp);
         window.addEventListener('touchstart', onPointerDown, {passive: false}); window.addEventListener('touchmove', onPointerMove, {passive: false}); window.addEventListener('touchend', onPointerUp);
 
-        // ★変更: PC版での視認性強化 (リングを太く)
         function playAndVisualizeNote(data) {
             if (!synth) return;
             synth.triggerAttackRelease(data.note, data.duration);
@@ -934,8 +949,8 @@
             const color = 0xffffff; 
             const opacity = isAuto ? 0.3 : 0.8;
             
-            // リングの太さをPC/スマホで切り替え
-            const innerR = isPC ? 0.95 : 0.99; // PCなら5倍の太さ (0.05 vs 0.01)
+            // PC Ring Visibility Fix
+            const innerR = isPC ? 0.95 : 0.99; 
             const mesh = new THREE.Mesh(new THREE.RingGeometry(innerR, 1.0, 64), new THREE.MeshBasicMaterial({ color: color, transparent: true, side: THREE.DoubleSide, opacity: opacity }));
             mesh.position.copy(pos); scene.add(mesh);
             visualObjects.push({ type: 'ring', mesh, startTime: Date.now(), duration: data.duration });
