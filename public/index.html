@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Synth Master Sync v2.2</title>
+    <title>Synth Master Sync v2.3</title>
     <style>
         body { margin: 0; overflow: hidden; background: #080808; touch-action: none; color: white; font-family: monospace; }
         
@@ -64,7 +64,6 @@
         }
         button:hover { background: rgba(0, 255, 204, 0.1); border-color: #00ffcc; }
         button.active { background: #00ffcc; color: #000; border-color: #00ffcc; box-shadow: 0 0 15px rgba(0,255,204,0.6); text-shadow: none; font-weight: bold; }
-        /* GHOSTボタン用の特別スタイル */
         button.ghost-active { background: #cc00ff; color: #000; border-color: #cc00ff; box-shadow: 0 0 15px rgba(204,0,255,0.6); }
 
         .scale-grid { 
@@ -137,7 +136,7 @@
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v2.2 - SEPARATE GHOST</div>
+    <div id="version-display">v2.3 - SILKY SMOOTH</div>
 
     <button id="mode-btn">MODE: TOUCH</button>
     <button id="sensor-btn">SENSOR: OFF</button>
@@ -236,6 +235,7 @@
 
         let sensorCursor;
         let cursorTargetPos = { x: 0, y: 0 };
+        // ★重要: 現在値（描画用）と目標値（サーバー同期用）を分ける
         let meterTargetVal = { x: 0, y: 0 };
         let meterCurrentVal = { x: 0, y: 0 };
         
@@ -287,11 +287,23 @@
         window.addEventListener('resize', updateLayout);
         setTimeout(updateLayout, 100);
 
+        // --- Smoothing Logic Variables ---
+        // サーバーから受け取る「目標値」
+        let targetParams = {
+            'FILTER': 0.5, 'PAN': 0.5, 'VOL': 0.8, 'REVERB': 0.0,
+            'DELAY_FB': 0.3, 'DELAY_MIX': 0.0, 'DECAY': 0.1, 'RELEASE': 0.3, 'FREQ': 0.3
+        };
+        // 画面と音に反映する「現在値」（補間用）
+        let currentParams = { ...targetParams };
+
         const visualObjects = []; 
         
         function animate() {
             requestAnimationFrame(animate);
-            if(isStarted) drawEQ();
+            if(isStarted) {
+                drawEQ();
+                updateSmoothedSystems(); // ★滑らかにする処理を毎フレーム呼ぶ
+            }
 
             const lerpFactor = 0.2;
             if(sensorCursor) {
@@ -301,6 +313,7 @@
                 sensorCursor.position.y += (targetY - sensorCursor.position.y) * lerpFactor;
             }
 
+            // メーターの動きもLerp
             meterCurrentVal.x += (meterTargetVal.x - meterCurrentVal.x) * lerpFactor;
             meterCurrentVal.y += (meterTargetVal.y - meterCurrentVal.y) * lerpFactor;
             
@@ -355,7 +368,6 @@
         let localMixer = { synth: -4 };
         let localEQ = { low: {freq:100, gain:4}, mid: {freq:1000, gain:-2}, high: {freq:5000, gain:-6} };
         
-        // ★変更: 状態を分離
         let localAutoNote = { active: false, speed: 30 };
         let localAutoDrift = { active: false };
         
@@ -449,11 +461,8 @@
         // --- UI Element References ---
         const slA=document.getElementById('adsr-a'), slD=document.getElementById('adsr-d'), slS=document.getElementById('adsr-s'), slR=document.getElementById('adsr-r');
         const volSynth=document.getElementById('vol-synth');
-        
-        // ★変更: ボタン参照変更
         const autoNoteBtn = document.getElementById('auto-note-btn');
         const autoDriftBtn = document.getElementById('auto-drift-btn');
-        
         const autoSpeed = document.getElementById('auto-speed');
         const scaleBtns = document.querySelectorAll('.scale-btn');
         const sensorBtn = document.getElementById('sensor-btn');
@@ -469,45 +478,72 @@
         const ASSIGNABLE_PARAMS = ['FILTER', 'PAN', 'VOL', 'REVERB', 'DELAY_FB', 'DELAY_MIX', 'DECAY', 'RELEASE', 'FREQ'];
         let myTargets = { x: 'FILTER', y: 'REVERB' };
         
-        function updateAllSystems(target, val, skipUI = false) {
+        // ★ターゲット値を更新するだけ（即時反映はしない）
+        function updateTargetParams(target, val) {
             if (target === myTargets.x) cursorTargetPos.x = (val - 0.5) * playAreaSize;
             if (target === myTargets.y) cursorTargetPos.y = (val - 0.5) * playAreaSize;
 
             if (myTargets.x === target) meterTargetVal.x = val;
             if (myTargets.y === target) meterTargetVal.y = val;
 
-            if (!synth) return;
-
-            if (target === 'FILTER') { const freq = 100 * Math.pow(80, val); if(globalFilter) globalFilter.frequency.rampTo(freq, 0.1); } 
-            else if (target === 'PAN') { const panVal = (val * 2) - 1; if(panner) panner.pan.rampTo(panVal, 0.1); } 
-            else if (target === 'VOL') { 
-                const vol = (val * 60) - 60; synth.volume.rampTo(vol, 0.1); 
-                if(!skipUI) volSynth.value = vol; 
-            } 
-            else if (target === 'REVERB') { if(reverb) reverb.wet.rampTo(val, 0.1); } 
-            else if (target === 'DELAY_FB') { if(pingPong) pingPong.feedback.rampTo(val * 0.9, 0.1); }
-            else if (target === 'DELAY_MIX') { if(pingPong) pingPong.wet.rampTo(val, 0.1); }
-            else if (target === 'DECAY') { 
-                const d = 0.1 + (val * 1.9); synth.set({ envelope: { decay: d } }); 
-                if(!skipUI) { slD.value = d; drawADSRVisual(); }
-            } 
-            else if (target === 'RELEASE') { 
-                const r = 0.1 + (val * 4.9); synth.set({ envelope: { release: r } }); 
-                if(!skipUI) { slR.value = r; drawADSRVisual(); }
-            }
-            else if (target === 'FREQ') {
-                const speed = Math.floor(val * 100);
-                localAutoNote.speed = speed;
-                if(!skipUI) autoSpeed.value = speed;
-            }
+            // ターゲット値を保持
+            targetParams[target] = val;
         }
 
+        // ★毎フレーム呼ばれる：現在値をターゲットに近づけ、音とUIに適用する (Lerp)
+        function updateSmoothedSystems() {
+            if (!synth) return;
+
+            const SMOOTH_FACTOR = 0.1; // 0.1 = 滑らか、1.0 = 即時
+
+            for (const key of ASSIGNABLE_PARAMS) {
+                // Lerp: 現在値 += (目標値 - 現在値) * 係数
+                currentParams[key] += (targetParams[key] - currentParams[key]) * SMOOTH_FACTOR;
+                const val = currentParams[key];
+
+                // 音響への適用
+                if (key === 'FILTER') { 
+                    // フィルター変化を指数関数的にして「ガバッ」と開く感じにする
+                    const freq = 100 * Math.pow(100, val); 
+                    if(globalFilter) globalFilter.frequency.value = freq; 
+                } 
+                else if (key === 'PAN') { if(panner) panner.pan.value = (val * 2) - 1; } 
+                else if (key === 'VOL') { 
+                    const vol = (val * 60) - 60; 
+                    synth.volume.value = vol; 
+                    volSynth.value = vol; // スライダーも滑らかに動く
+                } 
+                else if (key === 'REVERB') { if(reverb) reverb.wet.value = val; } 
+                else if (key === 'DELAY_FB') { if(pingPong) pingPong.feedback.value = val * 0.9; }
+                else if (key === 'DELAY_MIX') { if(pingPong) pingPong.wet.value = val; }
+                else if (key === 'DECAY') { 
+                    const d = 0.1 + (val * 1.9); 
+                    // ADSR等のパラメータは頻繁に変えると重いので、差が大きい時だけsetする
+                    // ここでは視覚反映のみにして、音は間引くか、軽量なら毎フレームでもOK
+                    // 今回は軽量化のためスライダー同期のみ（音色はトリガー時に反映されるので）
+                    slD.value = d; 
+                } 
+                else if (key === 'RELEASE') { 
+                    const r = 0.1 + (val * 4.9); 
+                    slR.value = r; 
+                }
+                else if (key === 'FREQ') {
+                    const speed = Math.floor(val * 100);
+                    autoSpeed.value = speed;
+                }
+            }
+            // ADSR描画更新 (毎回呼ぶと重いかもしれないが必要なら)
+            // drawADSRVisual(); 
+        }
+
+        // センサーイベント
         function handleSensor(e) {
             if (!isStarted || !isSensorActive) return;
             const gamma = e.gamma || 0; const normGamma = Math.max(-1, Math.min(1, gamma / 45)); const valX = (normGamma + 1) / 2; 
             const beta = e.beta || 0; const normBeta = Math.max(-1, Math.min(1, (beta - 45) / 45)); const valY = (1.0 - ((normBeta + 1) / 2)); 
 
-            updateAllSystems(myTargets.x, valX); updateAllSystems(myTargets.y, valY);
+            updateTargetParams(myTargets.x, valX);
+            updateTargetParams(myTargets.y, valY);
 
             const now = Date.now();
             if (now - lastSensorSync > 100) {
@@ -552,11 +588,27 @@
         }
 
         // --- Socket Receivers ---
-
+        
+        // 全パラメータ受信時もターゲットを更新するだけ
         socket.on('sync_all_params', (params) => {
-            for (const [key, val] of Object.entries(params)) { updateAllSystems(key, val); }
+            for (const [key, val] of Object.entries(params)) { 
+                targetParams[key] = val;
+                // Cursor位置更新用
+                if (key === myTargets.x) cursorTargetPos.x = (val - 0.5) * playAreaSize;
+                if (key === myTargets.y) cursorTargetPos.y = (val - 0.5) * playAreaSize;
+                if (myTargets.x === key) meterTargetVal.x = val;
+                if (myTargets.y === key) meterTargetVal.y = val;
+            }
         });
-        socket.on('sync_param', (data) => { updateAllSystems(data.target, data.value); });
+
+        socket.on('sync_param', (data) => { 
+            targetParams[data.target] = data.value;
+            // Cursor位置更新用
+            if (data.target === myTargets.x) cursorTargetPos.x = (data.value - 0.5) * playAreaSize;
+            if (data.target === myTargets.y) cursorTargetPos.y = (data.value - 0.5) * playAreaSize;
+            if (myTargets.x === data.target) meterTargetVal.x = data.value;
+            if (myTargets.y === data.target) meterTargetVal.y = data.value;
+        });
 
         socket.on('sync_waveform', d => { 
             waveBuffer = d; drawWave(waveBuffer); if(synth) updateSynthWave(d); 
@@ -564,10 +616,11 @@
 
         socket.on('sync_adsr', d => { 
             localADSR = d; 
+            // ADSRスライダーもターゲット更新扱いにすると綺麗だが、ここは直接反映でもOK
             const normD = (d.decay - 0.1) / 1.9;
             const normR = (d.release - 0.1) / 4.9;
-            updateAllSystems('DECAY', Math.max(0, Math.min(1, normD)));
-            updateAllSystems('RELEASE', Math.max(0, Math.min(1, normR)));
+            targetParams['DECAY'] = normD;
+            targetParams['RELEASE'] = normR;
             slA.value=d.attack; slS.value=d.sustain; drawADSRVisual();
             if(synth) synth.set({envelope:d});
         });
@@ -575,7 +628,7 @@
         socket.on('sync_mixer', d => {
             localMixer = d;
             const normVol = (d.synth + 60) / 60;
-            updateAllSystems('VOL', Math.max(0, Math.min(1, normVol)));
+            targetParams['VOL'] = normVol;
         });
 
         socket.on('sync_eq', d => { 
@@ -592,7 +645,6 @@
             }); 
         });
 
-        // ★変更: ノート用とドリフト用の受信
         socket.on('sync_auto_note', (data) => {
             localAutoNote = data;
             if(localAutoNote.active) { autoNoteBtn.textContent = "NOTES: ON"; autoNoteBtn.classList.add("active"); } 
@@ -613,7 +665,6 @@
 
         // --- UI Events (Emit) ---
         
-        // ★変更: ノートとドリフトそれぞれのEmit
         let lastAutoSync = 0;
         autoNoteBtn.addEventListener('click', (e) => { 
             e.stopPropagation(); 
@@ -639,7 +690,7 @@
         volSynth.addEventListener('input',()=>{ 
             const val = parseFloat(volSynth.value);
             const normVol = (val + 60) / 60;
-            updateAllSystems('VOL', normVol, true); 
+            updateTargetParams('VOL', normVol); // 自分自身の操作もターゲット更新経由にする
             localMixer.synth = val;
             if(Date.now()-lastMixerSync>30){socket.emit('update_mixer',localMixer);lastMixerSync=Date.now();} 
         });
@@ -649,9 +700,7 @@
             localADSR={attack:parseFloat(slA.value),decay:parseFloat(slD.value),sustain:parseFloat(slS.value),release:parseFloat(slR.value)};
             const normD = (localADSR.decay - 0.1) / 1.9;
             const normR = (localADSR.release - 0.1) / 4.9;
-            updateAllSystems('DECAY', normD, true);
-            updateAllSystems('RELEASE', normR, true);
-            drawADSRVisual();
+            // Sliders are updated manually, just emit
             if(Date.now() - lastAdsrSync > 30) { socket.emit('update_adsr',localADSR); lastAdsrSync = Date.now(); }
         };
         [slA,slD,slS,slR].forEach(s=>{ s.addEventListener('input',updateADSR); });
