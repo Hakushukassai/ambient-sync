@@ -3,23 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Synth Master Sync v2.3 - GLITCH</title>
+    <title>Synth Master Sync v2.4 - SILENT FORCE</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #080808; touch-action: none; color: white; font-family: monospace; transition: background 0.1s; }
+        /* Base Aesthetic: Deep Dark & Clean */
+        body { margin: 0; overflow: hidden; background: #050505; touch-action: none; color: #e0e0e0; font-family: 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.05em; }
         
-        /* v2.3 Glitch Styles */
-        body.glitch-active {
-            background: #110008;
+        /* 画面全体の明滅を廃止し、ボーダーの発光のみにする */
+        @keyframes pulse-border {
+            0% { border-color: #333; box-shadow: 0 0 0 rgba(0,0,0,0); }
+            50% { border-color: #fff; box-shadow: 0 0 15px rgba(255,255,255,0.1); }
+            100% { border-color: #333; box-shadow: 0 0 0 rgba(0,0,0,0); }
         }
-        body.glitch-active canvas {
-            filter: blur(1px) contrast(1.2) hue-rotate(90deg);
+
+        .ghost-pulse {
+            animation: pulse-border 0.4s ease-out;
         }
 
         #controls {
             position: fixed; bottom: 0; left: 0; width: 100%; height: 280px; 
-            background: linear-gradient(transparent, rgba(0,0,0,0.95) 15%);
+            background: rgba(5, 5, 5, 0.9); /* More solid background */
+            border-top: 1px solid #222;
             display: flex; flex-direction: row; justify-content: flex-start; align-items: center;
-            padding-bottom: 20px; z-index: 50; gap: 15px; box-sizing: border-box;
+            padding-bottom: 20px; z-index: 50; gap: 20px; box-sizing: border-box;
             overflow-x: auto; touch-action: pan-x; -webkit-overflow-scrolling: touch;
         }
         #controls::-webkit-scrollbar { display: none; }
@@ -30,106 +35,102 @@
 
         .panel-section {
             display: flex; flex-direction: column; align-items: center;
-            background: rgba(10, 10, 10, 0.85); border: 1px solid #333; border-radius: 6px;
-            padding: 10px;
-            backdrop-filter: blur(10px); width: 260px; height: 210px;
-            justify-content: flex-start; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            background: #0a0a0a; border: 1px solid #222; border-radius: 2px;
+            padding: 15px; width: 260px; height: 210px;
+            justify-content: flex-start; 
             flex-shrink: 0; position: relative; scroll-snap-align: center;
+            transition: border-color 0.2s;
         }
-        .panel-section:hover { border-color: #555; box-shadow: 0 0 20px rgba(0, 255, 204, 0.1); }
-        .panel-section::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: linear-gradient(90deg, transparent, #00ffcc, transparent); opacity: 0.6; }
+        /* グリッチ演出の代わりに、パネル枠が上品に反応する */
         
-        .label { font-size: 11px; color: #00ffcc; margin-bottom: 8px; letter-spacing: 2px; font-weight: bold; text-transform: uppercase; pointer-events: none; }
+        .label { font-size: 10px; color: #666; margin-bottom: 12px; letter-spacing: 2px; font-weight: 400; text-transform: uppercase; width: 100%; text-align: left; }
 
-        #wave-canvas, #eq-canvas, #adsr-canvas { background: rgba(0, 0, 0, 0.5); border: 1px solid #444; border-radius: 4px; width: 240px; touch-action: none; }
+        canvas { background: #000; border: 1px solid #222; border-radius: 2px; touch-action: none; }
         #wave-canvas { height: 90px; cursor: crosshair; }
         #eq-canvas { height: 100px; cursor: default; }
         #adsr-canvas { height: 70px; }
 
-        .eq-values { font-size: 10px; color: #888; width: 100%; text-align: center; margin-top: 5px; pointer-events: none; }
+        .eq-values { font-size: 9px; color: #444; width: 100%; text-align: center; margin-top: 5px; pointer-events: none; }
         .mixer-container { display: flex; gap: 30px; height: 100%; align-items: center; justify-content: center; }
         #adsr-container { display: flex; flex-direction: column; align-items: center; width: 100%; }
-        .sliders { display: flex; gap: 10px; width: 100%; justify-content: space-between; margin-top: 5px; }
+        .sliders { display: flex; gap: 10px; width: 100%; justify-content: space-between; margin-top: 10px; }
         .slider-group { display: flex; flex-direction: column; align-items: center; }
         
+        /* Minimalist Sliders */
         input[type=range].vertical {
-            -webkit-appearance: none; appearance: none; width: 30px; height: 100px;
+            -webkit-appearance: none; appearance: none; width: 20px; height: 100px;
             background: transparent; -webkit-appearance: slider-vertical;
             cursor: pointer; z-index: 2;
-            background: linear-gradient(to right, transparent 13px, #222 13px, #222 17px, transparent 17px);
         }
         input[type=range].vertical::-webkit-slider-thumb {
-            -webkit-appearance: none; width: 28px; height: 14px; background: #000; 
-            border: 1px solid #00ffcc; border-radius: 2px; box-shadow: 0 0 8px rgba(0,255,204,0.4);
+            -webkit-appearance: none; width: 20px; height: 2px; background: #fff; 
+            border: none; box-shadow: none; margin-left: -8px; /* Alignment tweak */
         }
-        .param-label { font-size: 10px; color: #666; margin-top: 6px; font-weight: bold; pointer-events: none; }
+        .param-label { font-size: 9px; color: #444; margin-top: 8px; font-weight: 400; }
 
-        .btn-group { display: flex; gap: 10px; margin-top: 10px; }
+        .btn-group { display: flex; gap: 8px; margin-top: 10px; width: 100%; }
         button {
-            background: rgba(0,0,0,0.6); border: 1px solid #333; border-bottom: 2px solid #333;
-            color: #00ffcc; font-size: 10px; padding: 6px 14px; cursor: pointer; border-radius: 2px;
-            font-family: monospace; text-shadow: 0 0 5px rgba(0,255,204,0.3); touch-action: manipulation;
+            background: #111; border: 1px solid #333;
+            color: #888; font-size: 9px; padding: 8px 0; flex: 1; cursor: pointer; border-radius: 2px;
+            font-family: inherit; transition: all 0.2s;
         }
-        button:hover { background: rgba(0, 255, 204, 0.1); border-color: #00ffcc; }
-        button.active { background: #00ffcc; color: #000; border-color: #00ffcc; box-shadow: 0 0 15px rgba(0,255,204,0.6); text-shadow: none; font-weight: bold; }
-        button.ghost-active { background: #cc00ff; color: #000; border-color: #cc00ff; box-shadow: 0 0 15px rgba(204,0,255,0.6); }
+        button:hover { background: #222; color: #fff; }
+        button.active { background: #fff; color: #000; border-color: #fff; }
+        /* Ghost Button: Stylish Purple Accent */
+        button.ghost-active { background: #333; color: #d0aaff; border-color: #7744ff; box-shadow: 0 0 5px rgba(119, 68, 255, 0.2); }
 
         .scale-grid { 
-            display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; margin-top: 5px; height: 100%; 
+            display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; margin-top: 5px; height: 100%; 
             overflow-y: auto; align-content: start; 
         }
         .scale-btn { 
-            padding: 8px 4px; font-size: 9px; text-align: left; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
-            border: 1px solid #333; background: rgba(0,0,0,0.3); 
+            padding: 10px 8px; font-size: 9px; text-align: left; width: 100%; 
+            border: 1px solid #222; background: #111; color: #666;
         }
-        .scale-btn.active { border-color: #00ffcc; background: rgba(0,255,204,0.2); color: white; }
+        .scale-btn.active { border-color: #666; background: #222; color: #fff; }
 
         #overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.92); z-index: 999;
+            background: rgba(0,0,0,0.95); z-index: 999;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
-            cursor: pointer; letter-spacing: 3px;
+            cursor: pointer; letter-spacing: 4px; color: #fff; font-weight: 300;
         }
-        #overlay span { margin-top: 15px; font-size: 10px; color: #888; letter-spacing: 1px; }
+        #overlay span { margin-top: 20px; font-size: 10px; color: #555; letter-spacing: 2px; }
 
-        #sensor-btn {
-            position: fixed; top: 20px; right: 20px; z-index: 100;
-            background: rgba(0,0,0,0.5); border: 1px solid #444; color: #888;
-            padding: 8px 12px; font-size: 10px; border-radius: 20px; cursor: pointer;
+        #sensor-btn, #mode-btn {
+            position: fixed; top: 20px; z-index: 100;
+            background: rgba(0,0,0,0.3); border: 1px solid #333; color: #555;
+            padding: 8px 16px; font-size: 9px; border-radius: 100px; cursor: pointer;
+            backdrop-filter: blur(5px); transition: all 0.3s;
         }
-        #sensor-btn.active { border-color: #00ffcc; color: #00ffcc; background: rgba(0,255,204,0.1); }
-
-        #mode-btn {
-            position: fixed; top: 20px; left: 20px; z-index: 100;
-            background: rgba(0,0,0,0.5); border: 1px solid #444; color: #888;
-            padding: 8px 12px; font-size: 10px; border-radius: 20px; cursor: pointer;
-        }
-        #mode-btn.physics { border-color: #ff00cc; color: #ff00cc; background: rgba(255,0,204,0.1); box-shadow: 0 0 10px rgba(255,0,204,0.2); }
-
-        #sensor-panel {
-            position: fixed; top: 60px; right: 20px; z-index: 90; display: flex; gap: 12px;
-        }
-        .sensor-group { display: flex; flex-direction: column; align-items: center; gap: 5px; }
-        .sensor-meter {
-            width: 10px; height: 80px; background: rgba(255,255,255,0.1);
-            border-radius: 4px; position: relative; overflow: hidden;
-            display: flex; flex-direction: column-reverse; border: 1px solid #333;
-        }
-        .sensor-fill { width: 100%; height: 0%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc; }
-        .target-btn {
-            font-size: 9px; color: #00ffcc; background: rgba(0,0,0,0.6);
-            border: 1px solid #444; padding: 4px; width: 65px; 
-            text-align: center; cursor: pointer; border-radius: 4px; white-space: nowrap;
-        }
+        #sensor-btn { right: 20px; }
+        #mode-btn { left: 20px; }
+        #sensor-btn.active { color: #fff; border-color: #fff; background: rgba(255,255,255,0.1); }
+        #mode-btn.physics { color: #fff; border-color: #fff; background: rgba(255,255,255,0.1); }
 
         #scale-display {
-            position: fixed; bottom: 20px; right: 5px;
-            font-size: 11px; color: #00ffcc; z-index: 9999; pointer-events: none; 
-            font-family: monospace; text-shadow: 0 0 5px rgba(0,0,0,0.8); text-align: right;
+            position: fixed; bottom: 20px; right: 20px;
+            font-size: 10px; color: #444; z-index: 9999; pointer-events: none; 
+            letter-spacing: 1px;
         }
         #version-display {
-            position: fixed; bottom: 5px; right: 5px;
-            font-size: 9px; color: #444; z-index: 9999; pointer-events: none; font-family: sans-serif;
+            position: fixed; bottom: 5px; right: 20px;
+            font-size: 9px; color: #222; z-index: 9999; pointer-events: none;
+        }
+
+        /* Minimalist Sensor Meters */
+        #sensor-panel { position: fixed; top: 70px; right: 20px; z-index: 90; display: flex; gap: 8px; }
+        .sensor-group { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .sensor-meter {
+            width: 4px; height: 60px; background: #111;
+            border-radius: 2px; position: relative; overflow: hidden;
+            display: flex; flex-direction: column-reverse;
+        }
+        .sensor-fill { width: 100%; height: 0%; background: #555; transition: height 0.1s; }
+        .target-btn {
+            font-size: 8px; color: #444; background: transparent;
+            border: none; padding: 2px; width: 40px; 
+            text-align: center; cursor: pointer;
         }
     </style>
     <script src="/socket.io/socket.io.js"></script>
@@ -140,11 +141,11 @@
     
     <div id="overlay">
         <div>TAP TO START</div>
-        <span>PLAY INSIDE THE SQUARE</span>
+        <span>AUDIO & VISUAL SYNC</span>
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v2.3 - GLITCH & FORCE</div>
+    <div id="version-display">v2.4 - SILENT FORCE</div>
 
     <button id="mode-btn">MODE: TOUCH</button>
     <button id="sensor-btn">SENSOR: OFF</button>
@@ -152,17 +153,17 @@
     <div id="sensor-panel">
         <div class="sensor-group">
             <div class="sensor-meter"><div class="sensor-fill" id="fill-x"></div></div>
-            <button class="target-btn" id="target-x-btn">FILTER</button>
+            <button class="target-btn" id="target-x-btn">FILT</button>
         </div>
         <div class="sensor-group">
-            <div class="sensor-meter"><div class="sensor-fill" id="fill-y" style="background:#ff00cc; box-shadow: 0 0 10px #ff00cc;"></div></div>
-            <button class="target-btn" id="target-y-btn">REVERB</button>
+            <div class="sensor-meter"><div class="sensor-fill" id="fill-y"></div></div>
+            <button class="target-btn" id="target-y-btn">REV</button>
         </div>
     </div>
 
     <div id="controls">
-        <div class="panel-section">
-            <div class="label">1. WAVEFORM (DESTRUCT)</div>
+        <div class="panel-section" id="panel-wave">
+            <div class="label">1. WAVEFORM</div>
             <canvas id="wave-canvas" width="240" height="90"></canvas>
             <div class="btn-group">
                 <button id="reset-btn">RESET</button>
@@ -171,23 +172,23 @@
             </div>
         </div>
 
-        <div class="panel-section">
-            <div class="label">2. EQ & SPECTRUM</div>
+        <div class="panel-section" id="panel-eq">
+            <div class="label">2. SPECTRUM</div>
             <div id="eq-container" style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center;">
                 <canvas id="eq-canvas" width="240" height="100"></canvas>
-                <div class="eq-values" id="eq-readout">DRAG POINTS</div>
+                <div class="eq-values" id="eq-readout">DRAG</div>
             </div>
         </div>
 
-        <div class="panel-section">
-            <div class="label">3. MIXER & AUTO</div>
+        <div class="panel-section" id="panel-mix">
+            <div class="label">3. MIXER</div>
             <div class="mixer-container">
                 <div class="slider-group"><input type="range" class="vertical" id="vol-synth" min="-60" max="0" step="1" value="-6"><span class="param-label">VOL</span></div>
-                <div class="slider-group"><input type="range" class="vertical" id="auto-speed" min="0" max="100" step="1" value="30"><span class="param-label">FREQ</span></div>
+                <div class="slider-group"><input type="range" class="vertical" id="auto-speed" min="0" max="100" step="1" value="30"><span class="param-label">SPD</span></div>
             </div>
         </div>
 
-        <div class="panel-section">
+        <div class="panel-section" id="panel-adsr">
             <div class="label">4. ENVELOPE</div>
             <div id="adsr-container">
                 <canvas id="adsr-canvas" width="240" height="70"></canvas>
@@ -201,15 +202,15 @@
         </div>
 
         <div class="panel-section">
-            <div class="label">5. SCALE (MOOD)</div>
+            <div class="label">5. SCALE</div>
             <div class="scale-grid">
-                <button class="scale-btn" data-scale="MYSTERIOUS">MYSTERIOUS (DEFAULT)</button>
-                <button class="scale-btn active" data-scale="MINOR_PENTATONIC">MINOR PENTATONIC</button>
-                <button class="scale-btn" data-scale="MAJOR">MAJOR (BRIGHT)</button>
-                <button class="scale-btn" data-scale="MINOR">MINOR (DARK)</button>
-                <button class="scale-btn" data-scale="DORIAN">DORIAN (COOL)</button>
-                <button class="scale-btn" data-scale="LYDIAN">LYDIAN (ETHEREAL)</button>
-                <button class="scale-btn" data-scale="RYUKYU">RYUKYU (ISLAND)</button>
+                <button class="scale-btn" data-scale="MYSTERIOUS">MYSTERIOUS</button>
+                <button class="scale-btn active" data-scale="MINOR_PENTATONIC">M. PENTATONIC</button>
+                <button class="scale-btn" data-scale="MAJOR">MAJOR</button>
+                <button class="scale-btn" data-scale="MINOR">MINOR</button>
+                <button class="scale-btn" data-scale="DORIAN">DORIAN</button>
+                <button class="scale-btn" data-scale="LYDIAN">LYDIAN</button>
+                <button class="scale-btn" data-scale="RYUKYU">RYUKYU</button>
                 <button class="scale-btn" data-scale="MIYAKOBUSHI">MIYAKOBUSHI</button>
                 <button class="scale-btn" data-scale="WHOLE_TONE">WHOLE TONE</button>
             </div>
@@ -232,6 +233,9 @@
 
         // --- Visuals & Physics ---
         const scene = new THREE.Scene();
+        // ★変更: フォグを少し追加して奥行きを出す
+        scene.fog = new THREE.FogExp2(0x050505, 0.05);
+
         const width = window.innerWidth;
         const height = window.innerHeight;
         const camera = new THREE.OrthographicCamera(width / -2, width / 2, height / 2, height / -2, 1, 1000);
@@ -251,14 +255,15 @@
         const GRAVITY = 1.2; 
         const BOUNCE_DAMPING = 0.7; 
 
-        const cursorGeo = new THREE.OctahedronGeometry(1, 0); 
-        const cursorMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.6 });
+        // ★変更: カーソルをよりシンプルに
+        const cursorGeo = new THREE.RingGeometry(0.8, 1.0, 32); 
+        const cursorMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
         sensorCursor = new THREE.Mesh(cursorGeo, cursorMat);
         scene.add(sensorCursor);
         
-        // Force Field Visualization
-        const forceFieldGeo = new THREE.RingGeometry(0.1, 1.0, 32);
-        const forceFieldMat = new THREE.MeshBasicMaterial({ color: 0xff0055, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+        // ★変更: Force Fieldを「極細のライン」に変更 (Visual Upgrade)
+        const forceFieldGeo = new THREE.RingGeometry(0.95, 1.0, 64);
+        const forceFieldMat = new THREE.MeshBasicMaterial({ color: 0xaaccff, transparent: true, opacity: 0.0, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
         const forceFieldMesh = new THREE.Mesh(forceFieldGeo, forceFieldMat);
         scene.add(forceFieldMesh);
 
@@ -274,14 +279,15 @@
             camera.updateProjectionMatrix();
             renderer.setSize(w, h);
             if (playAreaMesh) scene.remove(playAreaMesh);
+            // ★変更: ボーダーをより薄く
             const borderGeo = new THREE.EdgesGeometry(new THREE.PlaneGeometry(playAreaSize, playAreaSize));
-            const borderMat = new THREE.LineBasicMaterial({ color: 0x444444 });
+            const borderMat = new THREE.LineBasicMaterial({ color: 0x333333 });
             playAreaMesh = new THREE.LineSegments(borderGeo, borderMat);
             playAreaMesh.position.y = playAreaOffsetY;
             scene.add(playAreaMesh);
 
             if(sensorCursor) {
-                const s = playAreaSize * 0.08;
+                const s = playAreaSize * 0.04;
                 sensorCursor.scale.set(s, s, s);
                 sensorCursor.position.y = playAreaOffsetY + cursorTargetPos.y; 
             }
@@ -301,31 +307,20 @@
         setTimeout(updateLayout, 100);
 
         const visualObjects = []; 
-        let glitchIntensity = 0;
 
         function animate() {
             requestAnimationFrame(animate);
             if(isStarted) drawEQ();
 
-            const lerpFactor = 0.2;
+            const lerpFactor = 0.1; // Slower, smoother movement
             if(sensorCursor) {
-                sensorCursor.rotation.x += 0.01; sensorCursor.rotation.y += 0.015;
+                // Remove Rotation for simplicity
                 const targetY = cursorTargetPos.y + playAreaOffsetY;
                 sensorCursor.position.x += (cursorTargetPos.x - sensorCursor.position.x) * lerpFactor;
                 sensorCursor.position.y += (targetY - sensorCursor.position.y) * lerpFactor;
             }
 
-            // --- v2.3 Glitch Camera Shake ---
-            if (glitchIntensity > 0) {
-                camera.position.x = (Math.random() - 0.5) * glitchIntensity * 20;
-                camera.position.y = (Math.random() - 0.5) * glitchIntensity * 20;
-                glitchIntensity *= 0.8;
-                if(glitchIntensity < 0.01) {
-                    glitchIntensity = 0;
-                    camera.position.x = 0; camera.position.y = 0;
-                    document.body.classList.remove('glitch-active');
-                }
-            }
+            // ★変更: Camera Shakeを削除 (静寂性)
 
             meterCurrentVal.x += (meterTargetVal.x - meterCurrentVal.x) * lerpFactor;
             meterCurrentVal.y += (meterTargetVal.y - meterCurrentVal.y) * lerpFactor;
@@ -337,17 +332,18 @@
             const dt = 0.5; 
             const floorY = -(playAreaSize / 2) + playAreaOffsetY;
             
-            // --- v2.3 Force Field Interaction ---
+            // --- Force Field Interaction ---
             let forcePos = null;
             if (physicsMode && isPointerDown && currentPointerPos) {
                  const cx = (currentPointerPos.x - window.innerWidth/2);
-                 const cy = -(currentPointerPos.y - window.innerHeight/2); // Y flip for Three.js
+                 const cy = -(currentPointerPos.y - window.innerHeight/2);
                  forcePos = new THREE.Vector3(cx, cy, 0);
                  
                  forceFieldMesh.position.copy(forcePos);
-                 forceFieldMesh.scale.set(playAreaSize*0.15, playAreaSize*0.15, 1);
-                 forceFieldMesh.material.opacity = 0.3 + Math.random()*0.2;
-                 forceFieldMesh.rotation.z += 0.1;
+                 // 控えめなエフェクト: 大きさは変えるが、色は薄く
+                 const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.1;
+                 forceFieldMesh.scale.set(playAreaSize*0.15*pulse, playAreaSize*0.15*pulse, 1);
+                 forceFieldMesh.material.opacity = 0.4; // 薄く
             } else {
                  forceFieldMesh.material.opacity = 0;
             }
@@ -356,7 +352,6 @@
                 const b = balls[i];
                 b.vy -= GRAVITY * dt;
                 
-                // Repulsion logic
                 if (forcePos) {
                     const dx = b.mesh.position.x - forcePos.x;
                     const dy = b.mesh.position.y - forcePos.y;
@@ -368,12 +363,10 @@
                     }
                 }
                 
-                // Apply Velocity
                 b.mesh.position.x += (b.vx || 0);
-                b.vx = (b.vx || 0) * 0.95; // Air drag for X
+                b.vx = (b.vx || 0) * 0.95; 
                 b.mesh.position.y += b.vy * dt;
 
-                // Walls
                 const limit = playAreaSize / 2;
                 if (b.mesh.position.x > limit) { b.mesh.position.x = limit; b.vx *= -1; }
                 if (b.mesh.position.x < -limit) { b.mesh.position.x = -limit; b.vx *= -1; }
@@ -402,20 +395,28 @@
                     visualObjects.splice(i, 1);
                 } else {
                     if(obj.type === 'ring') {
-                        const scale = (playAreaSize * 0.02) + (progress * playAreaSize * 0.4);
+                        // More elegant expansion
+                        const scale = (playAreaSize * 0.01) + (progress * playAreaSize * 0.5);
                         obj.mesh.scale.set(scale, scale, 1);
-                        obj.mesh.material.opacity = (1 - Math.pow(progress, 2)) * 0.3;
-                    } else if (obj.type === 'line') obj.mesh.material.opacity = (1 - progress) * 0.2;
+                        obj.mesh.material.opacity = (1 - progress) * 0.5; // Linear fade
+                    } else if (obj.type === 'line') {
+                        obj.mesh.material.opacity = (1 - progress) * 0.15;
+                    }
                 }
             }
             renderer.render(scene, camera);
         }
         animate();
 
-        function triggerGlitch() {
-            glitchIntensity = 1.0;
-            document.body.classList.add('glitch-active');
-            // Tone.jsが起動していれば、マスターリミッターを少しきつくするなどの処理も可能
+        // ★変更: グリッチ演出を「ボーダーの発光」のみに制限
+        function triggerGlitch(targetParam) {
+            // 対象のパネルだけ光らせる、または全体枠を光らせる
+            const panels = document.querySelectorAll('.panel-section');
+            panels.forEach(p => {
+                p.classList.remove('ghost-pulse');
+                void p.offsetWidth; // trigger reflow
+                p.classList.add('ghost-pulse');
+            });
         }
 
         // --- Audio & State ---
@@ -586,12 +587,12 @@
         targetXBtn.addEventListener('click', (e) => { e.stopPropagation();
             const idx = ASSIGNABLE_PARAMS.indexOf(myTargets.x); 
             myTargets.x = ASSIGNABLE_PARAMS[(idx + 1) % ASSIGNABLE_PARAMS.length];
-            targetXBtn.textContent = myTargets.x;
+            targetXBtn.textContent = myTargets.x.substring(0,4);
         });
         targetYBtn.addEventListener('click', (e) => { e.stopPropagation();
             const idx = ASSIGNABLE_PARAMS.indexOf(myTargets.y); 
             myTargets.y = ASSIGNABLE_PARAMS[(idx + 1) % ASSIGNABLE_PARAMS.length];
-            targetYBtn.textContent = myTargets.y;
+            targetYBtn.textContent = myTargets.y.substring(0,4);
         });
 
         modeBtn.addEventListener('click', (e) => {
@@ -624,13 +625,12 @@
         });
         socket.on('sync_param', (data) => { 
             updateAllSystems(data.target, data.value);
-            // v2.3: Ghostによる変更ならグリッチさせる
-            if(data.isGhost) triggerGlitch(); 
+            // v2.4: 画面揺れではなく、洗練されたボーダーパルスのみ
+            if(data.isGhost) triggerGlitch(data.target); 
         });
 
         socket.on('sync_waveform', d => { 
             waveBuffer = d; drawWave(waveBuffer); if(synth) updateSynthWave(d);
-            // v2.3: 波形更新もグリッチ対象
             if(isStarted) triggerGlitch();
         });
 
@@ -739,10 +739,12 @@
         let lastWaveSync = 0; let isDrawingWave=false;
         function drawWave(b){ 
             const w=waveCanvas.width, h=waveCanvas.height, c=h/2;
-            waveCtx.clearRect(0,0,w,h); waveCtx.strokeStyle='#333'; waveCtx.beginPath(); waveCtx.moveTo(0,c); waveCtx.lineTo(w,c); waveCtx.stroke(); 
-            waveCtx.beginPath(); waveCtx.strokeStyle='#00ffcc'; waveCtx.lineWidth=2; 
+            waveCtx.clearRect(0,0,w,h); 
+            // ★変更: 波形描画を細く、シャープに
+            waveCtx.strokeStyle='#333'; waveCtx.beginPath(); waveCtx.moveTo(0,c); waveCtx.lineTo(w,c); waveCtx.stroke(); 
+            waveCtx.beginPath(); waveCtx.strokeStyle='#fff'; waveCtx.lineWidth=1; 
             for(let i=0;i<WAVE_SIZE;i++){ const x=(i/(WAVE_SIZE-1))*w, y=c-(b[i]*(h/2)); if(i===0)waveCtx.moveTo(x,y); else waveCtx.lineTo(x,y); } 
-            waveCtx.stroke(); waveCtx.lineTo(w,c); waveCtx.lineTo(0,c); waveCtx.fillStyle='rgba(0, 255, 204, 0.1)'; waveCtx.fill(); 
+            waveCtx.stroke(); 
         }
         function updateWave(cx,cy){ 
             const r=waveCanvas.getBoundingClientRect(); const nx=Math.max(0,Math.min(1,(cx-r.left)/r.width)), ny=-((Math.max(0,Math.min(1,(cy-r.top)/r.height))*2)-1);
@@ -770,9 +772,9 @@
         resetBtn.addEventListener('click', e=>{e.stopPropagation(); waveBuffer=waveBuffer.map((_,i)=>Math.sin((i/WAVE_SIZE)*Math.PI*2)); drawWave(waveBuffer); updateSynthWave(waveBuffer); socket.emit('update_waveform',waveBuffer)});
 
         function drawADSRVisual(){ 
-            const w=adsrC.width, h=adsrC.height; adsrCtx.clearRect(0,0,w,h); adsrCtx.fillStyle='rgba(0,0,0,0.3)'; adsrCtx.fillRect(0,0,w,h);
+            const w=adsrC.width, h=adsrC.height; adsrCtx.clearRect(0,0,w,h); 
             const A=parseFloat(slA.value), D=parseFloat(slD.value), S=parseFloat(slS.value), R=parseFloat(slR.value);
-            adsrCtx.beginPath(); adsrCtx.strokeStyle='#00ffcc'; adsrCtx.lineWidth=2;
+            adsrCtx.beginPath(); adsrCtx.strokeStyle='#888'; adsrCtx.lineWidth=1;
             const x1=(A/2)*(w*0.25), y2=h-(S*h), x2=x1+(D/2)*(w*0.25), x3=x2+(w*0.2), x4=Math.min(w,x3+(R/5)*(w*0.3));
             adsrCtx.moveTo(0,h); adsrCtx.lineTo(x1,0); adsrCtx.lineTo(x2,y2); adsrCtx.lineTo(x3,y2); adsrCtx.lineTo(x4,h); adsrCtx.stroke();
         }
@@ -795,7 +797,7 @@
             const w = eqCanvas.width; const h = eqCanvas.height; eqCtx.clearRect(0, 0, w, h);
             if (fft) {
                 const values = fft.getValue(); const nyquist = Tone.context.sampleRate / 2; const fftSize = values.length;
-                eqCtx.fillStyle = 'rgba(0, 255, 204, 0.15)'; eqCtx.beginPath(); eqCtx.moveTo(0, h);
+                eqCtx.fillStyle = '#1a1a1a'; eqCtx.beginPath(); eqCtx.moveTo(0, h);
                 for (let i = 0; i < fftSize; i++) {
                     const db = values[i]; if (db === -Infinity) continue;
                     const freq = i * (nyquist / fftSize); const x = freqToX(freq, w); if (x < 0) continue; if (x > w) break; 
@@ -803,16 +805,18 @@
                 }
                 eqCtx.lineTo(w, h); eqCtx.fill();
             }
-            eqCtx.strokeStyle = 'rgba(255,255,255,0.1)'; eqCtx.lineWidth = 1; eqCtx.beginPath();
+            eqCtx.strokeStyle = '#333'; eqCtx.lineWidth = 1; eqCtx.beginPath();
             [100, 1000, 10000].forEach(f => { const x = freqToX(f, w); eqCtx.moveTo(x, 0); eqCtx.lineTo(x, h); });
             eqCtx.moveTo(0, h/2); eqCtx.lineTo(w, h/2); eqCtx.stroke();
-            eqCtx.strokeStyle = '#00ffcc'; eqCtx.lineWidth = 2; eqCtx.beginPath();
+            eqCtx.strokeStyle = '#fff'; eqCtx.lineWidth = 1.5; eqCtx.beginPath();
             for (let x = 0; x < w; x+=2) { const y = dbToY(getEQResponse(xToFreq(x, w)), h); if (x === 0) eqCtx.moveTo(x, y); else eqCtx.lineTo(x, y); }
             eqCtx.stroke(); 
-            [ {id:'low', c:'#ff0055'}, {id:'mid', c:'#ffff00'}, {id:'high', c:'#00ccff'} ].forEach(p => {
+            // EQ points style update
+            [ {id:'low'}, {id:'mid'}, {id:'high'} ].forEach(p => {
                 const d = localEQ[p.id]; const x = freqToX(d.freq, w); const y = dbToY(d.gain, h);
-                eqCtx.fillStyle = p.c; eqCtx.beginPath(); eqCtx.arc(x, y, 6, 0, Math.PI*2); eqCtx.fill();
-                if(draggingPoint===p.id){ eqCtx.strokeStyle='#fff'; eqCtx.lineWidth=2; eqCtx.stroke(); }
+                eqCtx.fillStyle = '#000'; eqCtx.strokeStyle = '#fff'; eqCtx.lineWidth = 1; 
+                eqCtx.beginPath(); eqCtx.arc(x, y, 4, 0, Math.PI*2); eqCtx.fill(); eqCtx.stroke();
+                if(draggingPoint===p.id){ eqCtx.fillStyle='#fff'; eqCtx.fill(); }
             });
         }
         function handleEQMove(cx, cy, isDown) {
@@ -829,11 +833,11 @@
                     if(draggingPoint==='mid'){ eqMid.frequency.value=f; eqMid.gain.value=g; }
                     if(draggingPoint==='high'){ eqHigh.frequency.value=f; eqHigh.gain.value=g; }
                 }
-                eqReadout.textContent=`${draggingPoint.toUpperCase()}: ${Math.round(f)}Hz / ${g.toFixed(1)}dB`; 
+                eqReadout.textContent=`${draggingPoint.toUpperCase()}`; 
                 if (Date.now() - lastEqSyncTime > 30) { socket.emit('update_eq', localEQ); lastEqSyncTime = Date.now(); }
             }
         }
-        const endEQDrag = () => { if(draggingPoint){ socket.emit('update_eq', localEQ); draggingPoint=null; eqReadout.textContent="DRAG POINTS"; }};
+        const endEQDrag = () => { if(draggingPoint){ socket.emit('update_eq', localEQ); draggingPoint=null; eqReadout.textContent="DRAG"; }};
         eqCanvas.addEventListener('mousedown', e=>handleEQMove(e.clientX,e.clientY,true)); window.addEventListener('mousemove', e=>{if(draggingPoint)handleEQMove(e.clientX,e.clientY,false)}); window.addEventListener('mouseup', endEQDrag);
         eqCanvas.addEventListener('touchstart', e=>{e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,true)},{passive:false}); window.addEventListener('touchmove', e=>{if(draggingPoint){e.preventDefault(); handleEQMove(e.touches[0].clientX,e.touches[0].clientY,false)}},{passive:false}); window.addEventListener('touchend', endEQDrag);
 
@@ -852,11 +856,12 @@
             const xPos = (clampX - 0.5) * playAreaSize;
             const yPos = -(playAreaSize / 2) + playAreaOffsetY;
             
-            const mesh = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.0, 32), new THREE.MeshBasicMaterial({ color: 0xff00cc, transparent: true, side: THREE.DoubleSide }));
+            // ★変更: Physics Visual -> Simple White/Grey Ring
+            const mesh = new THREE.Mesh(new THREE.RingGeometry(0.98, 1.0, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, side: THREE.DoubleSide }));
             mesh.position.set(xPos, yPos, 0);
             mesh.rotation.x = Math.PI / 2;
             scene.add(mesh);
-            visualObjects.push({ type: 'ring', mesh, startTime: Date.now(), duration: 0.5 });
+            visualObjects.push({ type: 'ring', mesh, startTime: Date.now(), duration: 0.8 });
         }
 
         function triggerNoteFromInput(normX, normY) {
@@ -870,8 +875,9 @@
         }
 
         function spawnBallVisual(x, y, id, isLocal) {
-            const color = isLocal ? 0xff00cc : 0xffaa00;
-            const ballGeo = new THREE.SphereGeometry(playAreaSize * 0.03, 16, 16);
+            // ★変更: ボールの色も白/グレー系に統一
+            const color = isLocal ? 0xffffff : 0x888888;
+            const ballGeo = new THREE.SphereGeometry(playAreaSize * 0.02, 16, 16);
             const ballMat = new THREE.MeshBasicMaterial({ color: color, wireframe: true });
             const ballMesh = new THREE.Mesh(ballGeo, ballMat);
             
@@ -884,8 +890,8 @@
             balls.push({
                 mesh: ballMesh,
                 vy: 0,
-                vx: 0, // vx init
-                radius: playAreaSize * 0.03,
+                vx: 0,
+                radius: playAreaSize * 0.02,
                 id: id
             });
         }
@@ -911,7 +917,6 @@
             const normX = ((cX - centerX) / playAreaSize) + 0.5; const normY = ((cY - centerY) / playAreaSize) + 0.5;
 
             if (physicsMode) {
-                // v2.3: Gravity Mode - Only spawn on tap (not move), allow repulsion on hold
                 if (!isMove && normX >= 0 && normX <= 1 && normY >= 0 && normY <= 1) {
                     spawnBallVisual(normX, normY, socket.id, true);
                     socket.emit('spawn_ball', { x: normX, y: normY });
@@ -931,7 +936,7 @@
                     handleInput(e, true); 
                 } 
             } else {
-                currentPointerPos = null; // Reset if not dragging
+                currentPointerPos = null; 
             }
         };
         const onPointerUp = () => { isPointerDown = false; prevNotePos = null; currentPointerPos = null; };
@@ -944,20 +949,25 @@
             synth.triggerAttackRelease(data.note, data.duration);
             const xPos = (data.normX - 0.5) * playAreaSize; const yPos = -(data.normY - 0.5) * playAreaSize + playAreaOffsetY;
             const pos = new THREE.Vector3(xPos, yPos, 0);
-            const isAuto = data.id === 'auto'; const isMe = data.id === socket.id;
-            const color = isAuto ? 0xffaa00 : (isMe ? 0x00ffcc : 0xff00cc);
-            const mesh = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.0, 64), new THREE.MeshBasicMaterial({ color: color, transparent: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+            
+            const isAuto = data.id === 'auto';
+            const color = 0xffffff; // All white logic for sophistication
+            
+            // Auto notes are subtler
+            const opacity = isAuto ? 0.3 : 0.8;
+            
+            const mesh = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.0, 64), new THREE.MeshBasicMaterial({ color: color, transparent: true, side: THREE.DoubleSide, opacity: opacity }));
             mesh.position.copy(pos); scene.add(mesh);
             visualObjects.push({ type: 'ring', mesh, startTime: Date.now(), duration: data.duration });
 
-            if (prevNotePos && !isAuto && isMe) { 
+            if (prevNotePos && !isAuto) { 
                 const points = [prevNotePos.clone(), pos.clone()];
                 const geometry = new THREE.BufferGeometry().setFromPoints(points);
-                const material = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending });
+                const material = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 });
                 const line = new THREE.Line(geometry, material); scene.add(line);
                 visualObjects.push({ type: 'line', mesh: line, startTime: Date.now(), duration: data.duration * 2.0 }); 
             }
-            if(!isAuto && isMe) prevNotePos = pos;
+            if(!isAuto && data.id === socket.id) prevNotePos = pos;
         }
 
         socket.on('trigger_note', (data) => { if (data.id !== socket.id) playAndVisualizeNote(data); });
