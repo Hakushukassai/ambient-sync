@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Synth Master Sync v2.5 - VISIBLE CONTROL</title>
+    <title>Synth Master Sync v2.5.1 - FIXED CONTROLS</title>
     <style>
-        /* --- Base Aesthetic: Mobile First --- */
+        /* --- Base Aesthetic --- */
         body { margin: 0; overflow: hidden; background: #050505; touch-action: none; color: #ccc; font-family: 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.05em; }
         
-        /* Ghost Pulse Animation (Subtle) */
+        /* Ghost Pulse Animation */
         @keyframes pulse-border {
             0% { border-color: #333; box-shadow: 0 0 0 rgba(0,0,0,0); }
             50% { border-color: #777; box-shadow: 0 0 10px rgba(255,255,255,0.05); }
@@ -18,7 +18,7 @@
 
         /* --- Controls Container --- */
         #controls {
-            position: fixed; bottom: 0; left: 0; width: 100%; height: 300px; /* 少し高くして余裕を持たせる */
+            position: fixed; bottom: 0; left: 0; width: 100%; height: 300px;
             background: rgba(10, 10, 10, 0.95);
             border-top: 1px solid #222;
             display: flex; flex-direction: row; justify-content: flex-start; align-items: center;
@@ -27,19 +27,15 @@
         }
         #controls::-webkit-scrollbar { display: none; }
         
-        /* --- PC View Enhancements (視認性向上) --- */
+        /* --- PC View Enhancements --- */
         @media (min-width: 1024px) { 
-            body { background: #080808; } /* 背景を少し明るく */
+            body { background: #080808; }
             #controls { justify-content: center; overflow-x: visible; background: #111; height: 320px; } 
-            
-            /* パネルや線のコントラストを強化 */
             .panel-section { border: 1px solid #444 !important; background: #161616 !important; }
             canvas { border: 1px solid #555 !important; background: #000 !important; }
             .label { color: #888 !important; font-weight: bold; }
             .param-label { color: #aaa !important; }
             button { border-color: #555 !important; color: #aaa !important; }
-            
-            /* Three.jsの線などもくっきりさせる処理はJS側で行います */
         }
 
         .panel-section {
@@ -64,29 +60,26 @@
         .sliders { display: flex; gap: 8px; width: 100%; justify-content: space-between; margin-top: 10px; }
         .slider-group { display: flex; flex-direction: column; align-items: center; flex: 1; }
         
-        /* --- Fixed Faders (ズレ修正) --- */
+        /* --- Fixed Faders (操作性・見た目修正) --- */
         input[type=range].vertical {
-            -webkit-appearance: none; appearance: none; 
-            width: 4px; height: 100px; /* トラックを細く */
-            background: #222; 
-            cursor: pointer; outline: none; border-radius: 2px;
-            margin: 0 10px; /* 余白でクリック領域確保 */
+            -webkit-appearance: slider-vertical; /* 縦型動作に必須 */
+            width: 30px; height: 100px; /* 操作エリアを確保 */
+            background: transparent; /* 背景透明 */
+            cursor: pointer; outline: none;
+            /* 真ん中に細い線を描くトリック */
+            background: linear-gradient(to right, transparent 13px, #333 13px, #333 17px, transparent 17px);
+            margin: 0;
         }
-        /* Track Styles */
-        input[type=range].vertical::-webkit-slider-runnable-track { width: 4px; height: 100%; background: #222; border-radius: 2px; }
-        input[type=range].vertical::-moz-range-track { width: 4px; height: 100%; background: #222; border-radius: 2px; }
         
-        /* Thumb Styles (完全中央揃え) */
+        /* Thumb (ツマミ) のスタイル */
         input[type=range].vertical::-webkit-slider-thumb {
-            -webkit-appearance: none; appearance: none; 
-            width: 14px; height: 8px; 
-            background: #ccc; border: 1px solid #fff; border-radius: 1px;
-            margin-left: -5px; /* (ThumbWidth 14px - TrackWidth 4px) / 2 * -1 */
+            -webkit-appearance: none; 
+            width: 20px; height: 10px; 
+            background: #ccc; 
+            border: 1px solid #fff; 
+            border-radius: 2px;
             box-shadow: 0 0 5px rgba(255,255,255,0.2);
-        }
-        input[type=range].vertical::-moz-range-thumb {
-            width: 14px; height: 8px; background: #ccc; border: none; border-radius: 1px;
-            transform: translateX(0px); /* Firefox handles centering differently usually */
+            margin-left: -10px; /* 位置微調整 */
         }
 
         .param-label { font-size: 8px; color: #555; margin-top: 8px; text-align: center; white-space: nowrap;}
@@ -156,7 +149,7 @@
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v2.5 - VISIBLE CONTROL</div>
+    <div id="version-display">v2.5.1 - FIXED</div>
 
     <button id="mode-btn">MODE: TOUCH</button>
     <button id="sensor-btn">SENSOR: OFF</button>
@@ -430,7 +423,7 @@
         }
         animate();
 
-        // ★変更: Ghostのターゲットを絞る
+        // Ghost Glitch Trigger (Fixed: Targeted)
         function triggerGlitch(targetParam) {
             let panelId = null;
             if (['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX'].includes(targetParam)) panelId = 'panel-fx';
@@ -537,7 +530,7 @@
         const waveCanvas=document.getElementById('wave-canvas'), waveCtx=waveCanvas.getContext('2d'), resetBtn=document.getElementById('reset-btn');
         const adsrC=document.getElementById('adsr-canvas'), adsrCtx=adsrC.getContext('2d');
 
-        // ★変更: 新しいエフェクトスライダー
+        // New Effects Sliders
         const slFilt = document.getElementById('fx-filter');
         const slRev = document.getElementById('fx-reverb');
         const slDMix = document.getElementById('fx-delay-mix');
@@ -557,7 +550,7 @@
 
             if (!synth) return;
 
-            // ★変更: UI更新を全てのパラメータに対応させる
+            // UI更新含む処理
             if (target === 'FILTER') { 
                 const freq = 100 * Math.pow(80, val); 
                 if(globalFilter) globalFilter.frequency.rampTo(freq, 0.1); 
@@ -613,7 +606,6 @@
             }
         }
 
-        // Target Switching
         targetXBtn.addEventListener('click', (e) => { e.stopPropagation();
             const idx = ASSIGNABLE_PARAMS.indexOf(myTargets.x); 
             myTargets.x = ASSIGNABLE_PARAMS[(idx + 1) % ASSIGNABLE_PARAMS.length];
@@ -625,7 +617,6 @@
             targetYBtn.textContent = myTargets.y.substring(0,4);
         });
 
-        // Mode & Sensor Toggle
         modeBtn.addEventListener('click', (e) => {
             e.stopPropagation(); physicsMode = !physicsMode;
             if(physicsMode) { modeBtn.textContent = "MODE: GRAVITY"; modeBtn.classList.add('physics'); } 
@@ -689,9 +680,8 @@
 
 
         // --- UI Events (Emit) ---
-        // New Effects Sliders Events
         const emitParam = (target, val) => {
-            updateAllSystems(target, val, true); // Update local audio
+            updateAllSystems(target, val, true); 
             socket.emit('update_param', { target: target, value: val });
         };
         slFilt.addEventListener('input', () => emitParam('FILTER', parseFloat(slFilt.value)));
@@ -700,7 +690,6 @@
         slDFb.addEventListener('input', () => emitParam('DELAY_FB', parseFloat(slDFb.value)));
         slPan.addEventListener('input', () => emitParam('PAN', parseFloat(slPan.value)));
 
-        // Existing Events
         let lastAutoSync = 0;
         autoNoteBtn.addEventListener('click', (e) => { e.stopPropagation(); localAutoNote.active = !localAutoNote.active; socket.emit('update_auto_note', localAutoNote); });
         autoDriftBtn.addEventListener('click', (e) => { e.stopPropagation(); localAutoDrift.active = !localAutoDrift.active; socket.emit('update_auto_drift', localAutoDrift); });
@@ -729,7 +718,6 @@
         function drawWave(b){ 
             const w=waveCanvas.width, h=waveCanvas.height, c=h/2;
             waveCtx.clearRect(0,0,w,h); 
-            // PC: Brighter lines
             waveCtx.strokeStyle = isPC ? '#666' : '#333'; 
             waveCtx.beginPath(); waveCtx.moveTo(0,c); waveCtx.lineTo(w,c); waveCtx.stroke(); 
             waveCtx.beginPath(); 
