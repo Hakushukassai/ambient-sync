@@ -53,9 +53,8 @@ let currentEQ = {
 };
 let currentScaleName = "MYSTERIOUS";
 
-// ★変更: 状態管理を分離
 let autoNoteState = { active: false, speed: 30 };
-let autoDriftState = { active: false }; // パラメータ自動変動用
+let autoDriftState = { active: false }; 
 
 let autoNoteTimeout = null;
 let autoDriftInterval = null;
@@ -73,7 +72,6 @@ let globalParams = {
 };
 
 // --- 自動演奏ロジック (音符) ---
-
 function scheduleNextAutoNote() {
     if (autoNoteTimeout) clearTimeout(autoNoteTimeout);
     if (!autoNoteState.active) return;
@@ -108,50 +106,44 @@ function playAutoNote() {
     });
 }
 
-// --- 自動操作ロジック (パラメータ GHOST) ---
-// ★変更: もっと大胆に動かす
+// --- 自動操作ロジック (GHOST) ---
+// ★変更: 滑らかな大波を作る
 function startAutoParamDrift() {
     if (autoDriftInterval) clearInterval(autoDriftInterval);
     
-    // 200msごとに実行 (少し間隔を広げて、変化を分かりやすく)
+    let time = 0;
+    
+    // 100msごとに更新 (クライアント側で補間するのでカクつかない)
     autoDriftInterval = setInterval(() => {
-        // 変動させるパラメータの候補
-        const keys = ['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX', 'DECAY', 'RELEASE'];
+        time += 0.1;
         
-        // 一度に1〜2個のパラメータを同時に動かすことでカオス感を出す
-        const numParamsToChange = Math.random() > 0.7 ? 2 : 1;
+        // 1. FILTER: サイン波を使って 0.0〜1.0 の間を大きく往復させる
+        // Math.sin(time) は -1〜1 なので、加工して 0〜1 にする
+        // 少しランダム要素も足して「機械的すぎない」ようにする
+        const sineWave = (Math.sin(time * 0.5) + 1) / 2; // 0.0 ~ 1.0 のゆっくりな波
+        const noise = (Math.random() - 0.5) * 0.2;       // 少しのゆらぎ
+        let filterVal = sineWave + noise;
+        globalParams['FILTER'] = Math.max(0, Math.min(1, filterVal));
 
-        for(let i=0; i<numParamsToChange; i++) {
-            const key = keys[Math.floor(Math.random() * keys.length)];
-            let val = globalParams[key];
-
-            // ★大胆な変更ロジック
-            // 20%の確率で「大きくジャンプ」させる
-            if (Math.random() < 0.2) {
-                val = Math.random(); // 0.0〜1.0のどこかにワープ
-            } else {
-                // それ以外は大きめのランダムウォーク (-0.15 〜 +0.15)
-                // 以前は0.08だったので倍近く激しく動く
-                const drift = (Math.random() - 0.5) * 0.3; 
-                val += drift;
-            }
-            
-            // クランプ
-            val = Math.max(0, Math.min(1, val));
-            globalParams[key] = val;
-            
-            // 送信
-            io.emit('sync_param', { target: key, value: val });
-        }
+        // 2. その他のパラメータ: ランダムウォーク
+        const keys = ['PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX', 'DECAY', 'RELEASE'];
+        // ランダムに1つ選んで少し動かす
+        const key = keys[Math.floor(Math.random() * keys.length)];
+        let val = globalParams[key];
+        const drift = (Math.random() - 0.5) * 0.1; 
+        val += drift;
+        globalParams[key] = Math.max(0, Math.min(1, val));
         
-    }, 200);
+        // 全パラメータを一括送信（帯域節約のため間引いて送る形に近い）
+        io.emit('sync_all_params', globalParams);
+        
+    }, 100);
 }
 
 function stopAutoParamDrift() {
     if (autoDriftInterval) clearInterval(autoDriftInterval);
     autoDriftInterval = null;
 }
-
 
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
@@ -162,7 +154,6 @@ io.on('connection', (socket) => {
     socket.emit('sync_eq', currentEQ); 
     socket.emit('sync_scale', currentScaleName);
     
-    // ★変更: 2つの状態を送信
     socket.emit('sync_auto_note', autoNoteState);
     socket.emit('sync_auto_drift', autoDriftState);
     
@@ -211,7 +202,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ★変更: ノート自動演奏の切り替え
     socket.on('update_auto_note', (data) => {
         const wasActive = autoNoteState.active;
         autoNoteState = data;
@@ -224,7 +214,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ★追加: ドリフト(GHOST)の切り替え
     socket.on('update_auto_drift', (data) => {
         const wasActive = autoDriftState.active;
         autoDriftState = data;
