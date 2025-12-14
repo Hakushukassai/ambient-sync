@@ -53,9 +53,8 @@ let currentEQ = {
 };
 let currentScaleName = "MYSTERIOUS";
 
-// ★変更: 状態管理を分離
 let autoNoteState = { active: false, speed: 30 };
-let autoDriftState = { active: false }; // パラメータ自動変動用
+let autoDriftState = { active: false };
 
 let autoNoteTimeout = null;
 let autoDriftInterval = null;
@@ -73,7 +72,6 @@ let globalParams = {
 };
 
 // --- 自動演奏ロジック (音符) ---
-
 function scheduleNextAutoNote() {
     if (autoNoteTimeout) clearTimeout(autoNoteTimeout);
     if (!autoNoteState.active) return;
@@ -108,40 +106,46 @@ function playAutoNote() {
     });
 }
 
-// --- 自動操作ロジック (パラメータ GHOST) ---
-// ★変更: もっと大胆に動かす
+// --- 自動操作ロジック (パラメータ & 波形破壊) ---
 function startAutoParamDrift() {
     if (autoDriftInterval) clearInterval(autoDriftInterval);
     
-    // 200msごとに実行 (少し間隔を広げて、変化を分かりやすく)
+    // v2.3: 波形破壊の間隔カウンタ
+    let waveformCounter = 0;
+
     autoDriftInterval = setInterval(() => {
-        // 変動させるパラメータの候補
         const keys = ['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX', 'DECAY', 'RELEASE'];
-        
-        // 一度に1〜2個のパラメータを同時に動かすことでカオス感を出す
         const numParamsToChange = Math.random() > 0.7 ? 2 : 1;
 
         for(let i=0; i<numParamsToChange; i++) {
             const key = keys[Math.floor(Math.random() * keys.length)];
             let val = globalParams[key];
 
-            // ★大胆な変更ロジック
-            // 20%の確率で「大きくジャンプ」させる
             if (Math.random() < 0.2) {
-                val = Math.random(); // 0.0〜1.0のどこかにワープ
+                val = Math.random(); // Warp
             } else {
-                // それ以外は大きめのランダムウォーク (-0.15 〜 +0.15)
-                // 以前は0.08だったので倍近く激しく動く
                 const drift = (Math.random() - 0.5) * 0.3; 
                 val += drift;
             }
             
-            // クランプ
             val = Math.max(0, Math.min(1, val));
             globalParams[key] = val;
             
-            // 送信
-            io.emit('sync_param', { target: key, value: val });
+            io.emit('sync_param', { target: key, value: val, isGhost: true }); // isGhostフラグ追加
+        }
+
+        // v2.3: 波形破壊ロジック (Waveform Corruption)
+        // 5回に1回程度(約1秒に1回)、波形を少し歪ませる
+        waveformCounter++;
+        if (waveformCounter > 4 && Math.random() < 0.6) {
+            waveformCounter = 0;
+            // 現在の波形にノイズを混ぜる
+            currentWaveform = currentWaveform.map(v => {
+                // 10%の確率でスパイクノイズ、それ以外は微小変化
+                const noise = Math.random() < 0.1 ? (Math.random()-0.5)*0.5 : (Math.random()-0.5)*0.05;
+                return Math.max(-1, Math.min(1, v + noise));
+            });
+            io.emit('sync_waveform', currentWaveform);
         }
         
     }, 200);
@@ -152,7 +156,6 @@ function stopAutoParamDrift() {
     autoDriftInterval = null;
 }
 
-
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
@@ -161,11 +164,8 @@ io.on('connection', (socket) => {
     socket.emit('sync_mixer', currentMixer);
     socket.emit('sync_eq', currentEQ); 
     socket.emit('sync_scale', currentScaleName);
-    
-    // ★変更: 2つの状態を送信
     socket.emit('sync_auto_note', autoNoteState);
     socket.emit('sync_auto_drift', autoDriftState);
-    
     socket.emit('sync_all_params', globalParams);
 
     socket.on('play_note', (data) => {
@@ -211,7 +211,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ★変更: ノート自動演奏の切り替え
     socket.on('update_auto_note', (data) => {
         const wasActive = autoNoteState.active;
         autoNoteState = data;
@@ -224,7 +223,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ★追加: ドリフト(GHOST)の切り替え
     socket.on('update_auto_drift', (data) => {
         const wasActive = autoDriftState.active;
         autoDriftState = data;
