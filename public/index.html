@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Synth Master Sync v2.1</title>
+    <title>Synth Master Sync v2.2</title>
     <style>
         body { margin: 0; overflow: hidden; background: #080808; touch-action: none; color: white; font-family: monospace; }
         
@@ -64,6 +64,8 @@
         }
         button:hover { background: rgba(0, 255, 204, 0.1); border-color: #00ffcc; }
         button.active { background: #00ffcc; color: #000; border-color: #00ffcc; box-shadow: 0 0 15px rgba(0,255,204,0.6); text-shadow: none; font-weight: bold; }
+        /* GHOSTボタン用の特別スタイル */
+        button.ghost-active { background: #cc00ff; color: #000; border-color: #cc00ff; box-shadow: 0 0 15px rgba(204,0,255,0.6); }
 
         .scale-grid { 
             display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; margin-top: 5px; height: 100%; 
@@ -135,7 +137,7 @@
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v2.1 - AUTO GHOST DRIFT</div>
+    <div id="version-display">v2.2 - SEPARATE GHOST</div>
 
     <button id="mode-btn">MODE: TOUCH</button>
     <button id="sensor-btn">SENSOR: OFF</button>
@@ -157,7 +159,8 @@
             <canvas id="wave-canvas" width="240" height="90"></canvas>
             <div class="btn-group">
                 <button id="reset-btn">RESET</button>
-                <button id="auto-btn">AUTO: OFF</button>
+                <button id="auto-note-btn">NOTES: OFF</button>
+                <button id="auto-drift-btn">GHOST: OFF</button>
             </div>
         </div>
 
@@ -351,7 +354,10 @@
         let localADSR = { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1.5 };
         let localMixer = { synth: -4 };
         let localEQ = { low: {freq:100, gain:4}, mid: {freq:1000, gain:-2}, high: {freq:5000, gain:-6} };
-        let localAuto = { active: false, speed: 30 };
+        
+        // ★変更: 状態を分離
+        let localAutoNote = { active: false, speed: 30 };
+        let localAutoDrift = { active: false };
         
         const WAVE_SIZE=128; 
         let waveBuffer=new Array(WAVE_SIZE).fill(0).map((_,i)=>Math.sin((i/WAVE_SIZE)*Math.PI*2));
@@ -443,7 +449,11 @@
         // --- UI Element References ---
         const slA=document.getElementById('adsr-a'), slD=document.getElementById('adsr-d'), slS=document.getElementById('adsr-s'), slR=document.getElementById('adsr-r');
         const volSynth=document.getElementById('vol-synth');
-        const autoBtn = document.getElementById('auto-btn');
+        
+        // ★変更: ボタン参照変更
+        const autoNoteBtn = document.getElementById('auto-note-btn');
+        const autoDriftBtn = document.getElementById('auto-drift-btn');
+        
         const autoSpeed = document.getElementById('auto-speed');
         const scaleBtns = document.querySelectorAll('.scale-btn');
         const sensorBtn = document.getElementById('sensor-btn');
@@ -487,7 +497,7 @@
             }
             else if (target === 'FREQ') {
                 const speed = Math.floor(val * 100);
-                localAuto.speed = speed;
+                localAutoNote.speed = speed;
                 if(!skipUI) autoSpeed.value = speed;
             }
         }
@@ -582,11 +592,18 @@
             }); 
         });
 
-        socket.on('sync_auto', (data) => {
-            localAuto = data;
-            if(localAuto.active) { autoBtn.textContent = "AUTO: ON"; autoBtn.classList.add("active"); } 
-            else { autoBtn.textContent = "AUTO: OFF"; autoBtn.classList.remove("active"); }
-            autoSpeed.value = localAuto.speed;
+        // ★変更: ノート用とドリフト用の受信
+        socket.on('sync_auto_note', (data) => {
+            localAutoNote = data;
+            if(localAutoNote.active) { autoNoteBtn.textContent = "NOTES: ON"; autoNoteBtn.classList.add("active"); } 
+            else { autoNoteBtn.textContent = "NOTES: OFF"; autoNoteBtn.classList.remove("active"); }
+            autoSpeed.value = localAutoNote.speed;
+        });
+
+        socket.on('sync_auto_drift', (data) => {
+            localAutoDrift = data;
+            if(localAutoDrift.active) { autoDriftBtn.textContent = "GHOST: ON"; autoDriftBtn.classList.add("ghost-active"); } 
+            else { autoDriftBtn.textContent = "GHOST: OFF"; autoDriftBtn.classList.remove("ghost-active"); }
         });
 
         socket.on('spawn_ball', (data) => {
@@ -596,9 +613,27 @@
 
         // --- UI Events (Emit) ---
         
+        // ★変更: ノートとドリフトそれぞれのEmit
         let lastAutoSync = 0;
-        autoBtn.addEventListener('click', (e) => { e.stopPropagation(); localAuto.active = !localAuto.active; socket.emit('update_auto', localAuto); });
-        autoSpeed.addEventListener('input', () => { localAuto.speed = parseInt(autoSpeed.value); if(Date.now() - lastAutoSync > 100) { socket.emit('update_auto', localAuto); lastAutoSync = Date.now(); } });
+        autoNoteBtn.addEventListener('click', (e) => { 
+            e.stopPropagation(); 
+            localAutoNote.active = !localAutoNote.active; 
+            socket.emit('update_auto_note', localAutoNote); 
+        });
+        
+        autoDriftBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            localAutoDrift.active = !localAutoDrift.active;
+            socket.emit('update_auto_drift', localAutoDrift);
+        });
+
+        autoSpeed.addEventListener('input', () => { 
+            localAutoNote.speed = parseInt(autoSpeed.value); 
+            if(Date.now() - lastAutoSync > 100) { 
+                socket.emit('update_auto_note', localAutoNote); 
+                lastAutoSync = Date.now(); 
+            } 
+        });
 
         let lastMixerSync = 0;
         volSynth.addEventListener('input',()=>{ 
