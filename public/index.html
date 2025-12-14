@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Synth Master Sync v2.5.1 - FIXED CONTROLS</title>
+    <title>Synth Master Sync v2.6 - PERFECT ALIGN</title>
     <style>
         /* --- Base Aesthetic --- */
         body { margin: 0; overflow: hidden; background: #050505; touch-action: none; color: #ccc; font-family: 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.05em; }
         
-        /* Ghost Pulse Animation */
+        /* Ghost Pulse */
         @keyframes pulse-border {
             0% { border-color: #333; box-shadow: 0 0 0 rgba(0,0,0,0); }
             50% { border-color: #777; box-shadow: 0 0 10px rgba(255,255,255,0.05); }
@@ -57,34 +57,74 @@
         .eq-values { font-size: 9px; color: #444; width: 100%; text-align: center; margin-top: 5px; pointer-events: none; }
         .mixer-container { display: flex; gap: 20px; height: 100%; align-items: center; justify-content: center; width: 100%; }
         #adsr-container { display: flex; flex-direction: column; align-items: center; width: 100%; }
-        .sliders { display: flex; gap: 8px; width: 100%; justify-content: space-between; margin-top: 10px; }
-        .slider-group { display: flex; flex-direction: column; align-items: center; flex: 1; }
         
-        /* --- Fixed Faders (操作性・見た目修正) --- */
+        /* Sliders Layout Adjustment */
+        .sliders { display: flex; gap: 2px; width: 100%; justify-content: space-between; margin-top: 10px; height: 100px; }
+        .slider-group { 
+            display: flex; flex-direction: column; align-items: center; flex: 1; 
+            height: 100%; justify-content: flex-end; /* Align labels to bottom */
+            position: relative;
+        }
+        
+        /* --- PERFECT CENTERED SLIDERS (Rotated Horizontal) --- */
+        /* コンテナ内でスライダーを回転させるためのラッパー */
+        .slider-wrapper {
+            width: 30px; height: 80px;
+            display: flex; align-items: center; justify-content: center;
+        }
+
         input[type=range].vertical {
-            -webkit-appearance: slider-vertical; /* 縦型動作に必須 */
-            width: 30px; height: 100px; /* 操作エリアを確保 */
-            background: transparent; /* 背景透明 */
-            cursor: pointer; outline: none;
-            /* 真ん中に細い線を描くトリック */
-            background: linear-gradient(to right, transparent 13px, #333 13px, #333 17px, transparent 17px);
-            margin: 0;
+            -webkit-appearance: none; appearance: none;
+            width: 80px; /* 長さ (回転前は横幅) */
+            height: 30px; /* タッチ領域の太さ */
+            background: transparent;
+            transform: rotate(-90deg); /* 90度回転して縦にする */
+            cursor: pointer; margin: 0;
         }
-        
-        /* Thumb (ツマミ) のスタイル */
+
+        /* Track (Bar) */
+        input[type=range].vertical::-webkit-slider-runnable-track {
+            width: 100%; height: 4px;
+            background: #222; border-radius: 2px;
+            border: none;
+        }
+        input[type=range].vertical::-moz-range-track {
+            width: 100%; height: 4px;
+            background: #222; border-radius: 2px;
+            border: none;
+        }
+
+        /* Thumb (Knob) - Perfect Center */
         input[type=range].vertical::-webkit-slider-thumb {
-            -webkit-appearance: none; 
-            width: 20px; height: 10px; 
-            background: #ccc; 
-            border: 1px solid #fff; 
-            border-radius: 2px;
-            box-shadow: 0 0 5px rgba(255,255,255,0.2);
-            margin-left: -10px; /* 位置微調整 */
+            -webkit-appearance: none;
+            height: 14px; width: 8px; /* 回転しているので、ここでのwidthが画面上の「高さ」になりますが、視覚的には width=8px, height=14px の長方形 */
+            /* いや、回転しているので、widthが画面上の「縦幅」、heightが「横幅」になる */
+            /* 直感的に操作するために： */
+            /* 横向きスライダー時の width: スライダーの進行方向のサイズ */
+            /* 横向きスライダー時の height: スライダーの太さ方向のサイズ */
+            width: 14px; height: 20px; /* タッチしやすいサイズ */
+            
+            /* 見た目を作る (Box Shadow等で実際のツマミの形を描く) */
+            background: transparent; 
+            border: none; margin-top: -8px; /* (TrackHeight 4px - ThumbHeight 20px) / 2 = -8px でセンタリング */
+            
+            /* 実際の白い棒を描画 */
+            box-shadow: inset 0 0 0 4px transparent, inset 0 0 0 6px #ccc; 
+            /* ↑これはハックなので、シンプルにbackground指定に戻します */
+            background: #ccc; border: 1px solid #fff; border-radius: 2px;
+            width: 8px; height: 16px; /* 回転後の見た目サイズ */
+            margin-top: -6px; /* (4px - 16px)/2 = -6 */
         }
 
-        .param-label { font-size: 8px; color: #555; margin-top: 8px; text-align: center; white-space: nowrap;}
+        input[type=range].vertical::-moz-range-thumb {
+            width: 8px; height: 16px;
+            background: #ccc; border: 1px solid #fff; border-radius: 2px;
+            border: none;
+        }
 
-        .btn-group { display: flex; gap: 5px; margin-top: 10px; width: 100%; }
+        .param-label { font-size: 8px; color: #555; margin-top: 4px; text-align: center; white-space: nowrap; width: 100%; position: absolute; bottom: -12px;}
+
+        .btn-group { display: flex; gap: 5px; margin-top: 15px; width: 100%; }
         button {
             background: #111; border: 1px solid #333;
             color: #666; font-size: 9px; padding: 6px 0; flex: 1; cursor: pointer; border-radius: 2px;
@@ -149,7 +189,7 @@
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v2.5.1 - FIXED</div>
+    <div id="version-display">v2.6 - PERFECT ALIGN</div>
 
     <button id="mode-btn">MODE: TOUCH</button>
     <button id="sensor-btn">SENSOR: OFF</button>
@@ -187,8 +227,14 @@
         <div class="panel-section" id="panel-mix">
             <div class="label">3. MIXER</div>
             <div class="mixer-container">
-                <div class="slider-group"><input type="range" class="vertical" id="vol-synth" min="-60" max="0" step="1" value="-6"><span class="param-label">VOL</span></div>
-                <div class="slider-group"><input type="range" class="vertical" id="auto-speed" min="0" max="100" step="1" value="30"><span class="param-label">SPEED</span></div>
+                <div class="slider-group">
+                    <div class="slider-wrapper"><input type="range" class="vertical" id="vol-synth" min="-60" max="0" step="1" value="-6"></div>
+                    <span class="param-label">VOL</span>
+                </div>
+                <div class="slider-group">
+                    <div class="slider-wrapper"><input type="range" class="vertical" id="auto-speed" min="0" max="100" step="1" value="30"></div>
+                    <span class="param-label">SPEED</span>
+                </div>
             </div>
         </div>
 
@@ -197,22 +243,22 @@
             <div id="adsr-container">
                 <canvas id="adsr-canvas" width="224" height="60"></canvas>
                 <div class="sliders">
-                    <div class="slider-group"><input type="range" class="vertical" id="adsr-a" min="0.01" max="2.0" step="0.01" value="0.1"><span class="param-label">A</span></div>
-                    <div class="slider-group"><input type="range" class="vertical" id="adsr-d" min="0.1" max="2.0" step="0.01" value="0.2"><span class="param-label">D</span></div>
-                    <div class="slider-group"><input type="range" class="vertical" id="adsr-s" min="0" max="1.0" step="0.01" value="0.5"><span class="param-label">S</span></div>
-                    <div class="slider-group"><input type="range" class="vertical" id="adsr-r" min="0.1" max="5.0" step="0.1" value="1.5"><span class="param-label">R</span></div>
+                    <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="adsr-a" min="0.01" max="2.0" step="0.01" value="0.1"></div><span class="param-label">A</span></div>
+                    <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="adsr-d" min="0.1" max="2.0" step="0.01" value="0.2"></div><span class="param-label">D</span></div>
+                    <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="adsr-s" min="0" max="1.0" step="0.01" value="0.5"></div><span class="param-label">S</span></div>
+                    <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="adsr-r" min="0.1" max="5.0" step="0.1" value="1.5"></div><span class="param-label">R</span></div>
                 </div>
             </div>
         </div>
 
         <div class="panel-section" id="panel-fx">
             <div class="label">5. EFFECTS</div>
-            <div class="sliders" style="margin-top: 5px;">
-                <div class="slider-group"><input type="range" class="vertical" id="fx-filter" min="0" max="1" step="0.01" value="0.5"><span class="param-label">FILT</span></div>
-                <div class="slider-group"><input type="range" class="vertical" id="fx-reverb" min="0" max="1" step="0.01" value="0.0"><span class="param-label">REV</span></div>
-                <div class="slider-group"><input type="range" class="vertical" id="fx-delay-mix" min="0" max="1" step="0.01" value="0.0"><span class="param-label">D.MIX</span></div>
-                <div class="slider-group"><input type="range" class="vertical" id="fx-delay-fb" min="0" max="1" step="0.01" value="0.3"><span class="param-label">D.FB</span></div>
-                <div class="slider-group"><input type="range" class="vertical" id="fx-pan" min="0" max="1" step="0.01" value="0.5"><span class="param-label">PAN</span></div>
+            <div class="sliders">
+                <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="fx-filter" min="0" max="1" step="0.01" value="0.5"></div><span class="param-label">FILT</span></div>
+                <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="fx-reverb" min="0" max="1" step="0.01" value="0.0"></div><span class="param-label">REV</span></div>
+                <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="fx-delay-mix" min="0" max="1" step="0.01" value="0.0"></div><span class="param-label">D.MIX</span></div>
+                <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="fx-delay-fb" min="0" max="1" step="0.01" value="0.3"></div><span class="param-label">D.FB</span></div>
+                <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="fx-pan" min="0" max="1" step="0.01" value="0.5"></div><span class="param-label">PAN</span></div>
             </div>
         </div>
 
@@ -240,14 +286,12 @@
         let synth, limiter, chorus, reverb, pingPong, fft, panner, compressor; 
         let eqLow, eqMid, eqHigh, globalFilter; 
 
-        // --- Layout ---
+        // --- Layout & Device Detection ---
         let playAreaSize = 0;
         let playAreaMesh;
         let playAreaOffsetY = 0; 
         let prevNotePos = null;
-
-        // PC Visibility Flag
-        const isPC = window.innerWidth >= 1024;
+        const isPC = window.innerWidth >= 1024; // PC判定フラグ
 
         // --- Visuals & Physics ---
         const scene = new THREE.Scene();
@@ -277,7 +321,7 @@
         sensorCursor = new THREE.Mesh(cursorGeo, cursorMat);
         scene.add(sensorCursor);
         
-        // Force Field: Thin Line
+        // Force Field
         const forceFieldGeo = new THREE.RingGeometry(0.95, 1.0, 64);
         const forceFieldMat = new THREE.MeshBasicMaterial({ color: 0xaaccff, transparent: true, opacity: 0.0, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
         const forceFieldMesh = new THREE.Mesh(forceFieldGeo, forceFieldMat);
@@ -296,7 +340,6 @@
             renderer.setSize(w, h);
             if (playAreaMesh) scene.remove(playAreaMesh);
             
-            // PCなら線を明るく
             const lineColor = isPC ? 0x666666 : 0x333333;
             const borderGeo = new THREE.EdgesGeometry(new THREE.PlaneGeometry(playAreaSize, playAreaSize));
             const borderMat = new THREE.LineBasicMaterial({ color: lineColor });
@@ -322,7 +365,6 @@
             drawADSRVisual();
         }
         window.addEventListener('resize', () => {
-            // Reload page on significant resize to handle PC/Mobile switch properly
             if (Math.abs(window.innerWidth - width) > 100) location.reload();
             updateLayout();
         });
@@ -423,7 +465,6 @@
         }
         animate();
 
-        // Ghost Glitch Trigger (Fixed: Targeted)
         function triggerGlitch(targetParam) {
             let panelId = null;
             if (['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX'].includes(targetParam)) panelId = 'panel-fx';
@@ -550,7 +591,6 @@
 
             if (!synth) return;
 
-            // UI更新含む処理
             if (target === 'FILTER') { 
                 const freq = 100 * Math.pow(80, val); 
                 if(globalFilter) globalFilter.frequency.rampTo(freq, 0.1); 
@@ -884,6 +924,7 @@
         window.addEventListener('mousedown', onPointerDown); window.addEventListener('mousemove', onPointerMove); window.addEventListener('mouseup', onPointerUp);
         window.addEventListener('touchstart', onPointerDown, {passive: false}); window.addEventListener('touchmove', onPointerMove, {passive: false}); window.addEventListener('touchend', onPointerUp);
 
+        // ★変更: PC版での視認性強化 (リングを太く)
         function playAndVisualizeNote(data) {
             if (!synth) return;
             synth.triggerAttackRelease(data.note, data.duration);
@@ -892,7 +933,10 @@
             const isAuto = data.id === 'auto';
             const color = 0xffffff; 
             const opacity = isAuto ? 0.3 : 0.8;
-            const mesh = new THREE.Mesh(new THREE.RingGeometry(0.99, 1.0, 64), new THREE.MeshBasicMaterial({ color: color, transparent: true, side: THREE.DoubleSide, opacity: opacity }));
+            
+            // リングの太さをPC/スマホで切り替え
+            const innerR = isPC ? 0.95 : 0.99; // PCなら5倍の太さ (0.05 vs 0.01)
+            const mesh = new THREE.Mesh(new THREE.RingGeometry(innerR, 1.0, 64), new THREE.MeshBasicMaterial({ color: color, transparent: true, side: THREE.DoubleSide, opacity: opacity }));
             mesh.position.copy(pos); scene.add(mesh);
             visualObjects.push({ type: 'ring', mesh, startTime: Date.now(), duration: data.duration });
             if (prevNotePos && !isAuto) { 
