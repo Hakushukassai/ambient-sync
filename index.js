@@ -52,9 +52,13 @@ let currentEQ = {
     high: { freq: 5000, gain: -6 }
 };
 let currentScaleName = "MYSTERIOUS";
-let autoPlayState = { active: false, speed: 30 };
-let autoPlayTimeout = null;
-let autoParamInterval = null; // ★追加: パラメータ自動変動用タイマー
+
+// ★変更: 状態管理を分離
+let autoNoteState = { active: false, speed: 30 };
+let autoDriftState = { active: false }; // パラメータ自動変動用
+
+let autoNoteTimeout = null;
+let autoDriftInterval = null;
 
 let globalParams = {
     'FILTER': 0.5,
@@ -68,18 +72,21 @@ let globalParams = {
     'FREQ': 0.3
 };
 
-// --- 自動演奏ロジック ---
+// --- 自動演奏ロジック (音符) ---
 
 function scheduleNextAutoNote() {
-    if (autoPlayTimeout) clearTimeout(autoPlayTimeout);
-    if (!autoPlayState.active) return;
+    if (autoNoteTimeout) clearTimeout(autoNoteTimeout);
+    if (!autoNoteState.active) return;
+    
     playAutoNote();
+    
     const slowLimit = 8000;
     const fastLimit = 150;
-    const baseInterval = slowLimit - ((autoPlayState.speed / 100) * (slowLimit - fastLimit));
+    const baseInterval = slowLimit - ((autoNoteState.speed / 100) * (slowLimit - fastLimit));
     const randomFactor = 0.2 + (Math.random() * 1.6); 
     const nextDelay = baseInterval * randomFactor;
-    autoPlayTimeout = setTimeout(scheduleNextAutoNote, nextDelay);
+    
+    autoNoteTimeout = setTimeout(scheduleNextAutoNote, nextDelay);
 }
 
 function playAutoNote() {
@@ -101,35 +108,48 @@ function playAutoNote() {
     });
 }
 
-// ★追加: パラメータをゆらめかせる機能 (Ghost User)
+// --- 自動操作ロジック (パラメータ GHOST) ---
+// ★変更: もっと大胆に動かす
 function startAutoParamDrift() {
-    if (autoParamInterval) clearInterval(autoParamInterval);
+    if (autoDriftInterval) clearInterval(autoDriftInterval);
     
-    // 150msごとにパラメータを少し動かす
-    autoParamInterval = setInterval(() => {
-        // 変動させるパラメータの候補（音量や周波数は激しく動くと困るので除外気味に）
+    // 200msごとに実行 (少し間隔を広げて、変化を分かりやすく)
+    autoDriftInterval = setInterval(() => {
+        // 変動させるパラメータの候補
         const keys = ['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX', 'DECAY', 'RELEASE'];
-        const key = keys[Math.floor(Math.random() * keys.length)];
         
-        let val = globalParams[key];
-        // -0.05 〜 +0.05 の範囲でランダムに加算（ランダムウォーク）
-        const drift = (Math.random() - 0.5) * 0.08; 
-        val += drift;
+        // 一度に1〜2個のパラメータを同時に動かすことでカオス感を出す
+        const numParamsToChange = Math.random() > 0.7 ? 2 : 1;
+
+        for(let i=0; i<numParamsToChange; i++) {
+            const key = keys[Math.floor(Math.random() * keys.length)];
+            let val = globalParams[key];
+
+            // ★大胆な変更ロジック
+            // 20%の確率で「大きくジャンプ」させる
+            if (Math.random() < 0.2) {
+                val = Math.random(); // 0.0〜1.0のどこかにワープ
+            } else {
+                // それ以外は大きめのランダムウォーク (-0.15 〜 +0.15)
+                // 以前は0.08だったので倍近く激しく動く
+                const drift = (Math.random() - 0.5) * 0.3; 
+                val += drift;
+            }
+            
+            // クランプ
+            val = Math.max(0, Math.min(1, val));
+            globalParams[key] = val;
+            
+            // 送信
+            io.emit('sync_param', { target: key, value: val });
+        }
         
-        // 0.0〜1.0に制限
-        val = Math.max(0, Math.min(1, val));
-        
-        globalParams[key] = val;
-        
-        // 全員に送信（これでクライアントのカーソルも動く）
-        io.emit('sync_param', { target: key, value: val });
-        
-    }, 150);
+    }, 200);
 }
 
 function stopAutoParamDrift() {
-    if (autoParamInterval) clearInterval(autoParamInterval);
-    autoParamInterval = null;
+    if (autoDriftInterval) clearInterval(autoDriftInterval);
+    autoDriftInterval = null;
 }
 
 
@@ -141,7 +161,11 @@ io.on('connection', (socket) => {
     socket.emit('sync_mixer', currentMixer);
     socket.emit('sync_eq', currentEQ); 
     socket.emit('sync_scale', currentScaleName);
-    socket.emit('sync_auto', autoPlayState);
+    
+    // ★変更: 2つの状態を送信
+    socket.emit('sync_auto_note', autoNoteState);
+    socket.emit('sync_auto_drift', autoDriftState);
+    
     socket.emit('sync_all_params', globalParams);
 
     socket.on('play_note', (data) => {
@@ -187,18 +211,29 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('update_auto', (data) => {
-        const wasActive = autoPlayState.active;
-        autoPlayState = data;
-        io.emit('sync_auto', autoPlayState);
+    // ★変更: ノート自動演奏の切り替え
+    socket.on('update_auto_note', (data) => {
+        const wasActive = autoNoteState.active;
+        autoNoteState = data;
+        io.emit('sync_auto_note', autoNoteState);
         
-        // ★変更: AUTOON/OFFに合わせてパラメータ変動も開始/停止
-        if (autoPlayState.active && !wasActive) {
+        if (autoNoteState.active && !wasActive) {
             scheduleNextAutoNote();
-            startAutoParamDrift(); // 開始
-        } else if (!autoPlayState.active) {
-            if (autoPlayTimeout) clearTimeout(autoPlayTimeout);
-            stopAutoParamDrift();  // 停止
+        } else if (!autoNoteState.active) {
+            if (autoNoteTimeout) clearTimeout(autoNoteTimeout);
+        }
+    });
+
+    // ★追加: ドリフト(GHOST)の切り替え
+    socket.on('update_auto_drift', (data) => {
+        const wasActive = autoDriftState.active;
+        autoDriftState = data;
+        io.emit('sync_auto_drift', autoDriftState);
+
+        if (autoDriftState.active && !wasActive) {
+            startAutoParamDrift();
+        } else if (!autoDriftState.active) {
+            stopAutoParamDrift();
         }
     });
 
@@ -207,7 +242,7 @@ io.on('connection', (socket) => {
             globalParams[data.target] = data.value;
             socket.broadcast.emit('sync_param', data);
             if (data.target === 'FREQ') {
-                autoPlayState.speed = Math.floor(data.value * 100);
+                autoNoteState.speed = Math.floor(data.value * 100);
             }
         }
     });
