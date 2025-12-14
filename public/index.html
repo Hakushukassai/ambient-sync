@@ -3,10 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Synth Master Sync v2.2</title>
+    <title>Synth Master Sync v2.3 - GLITCH</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #080808; touch-action: none; color: white; font-family: monospace; }
+        body { margin: 0; overflow: hidden; background: #080808; touch-action: none; color: white; font-family: monospace; transition: background 0.1s; }
         
+        /* v2.3 Glitch Styles */
+        body.glitch-active {
+            background: #110008;
+        }
+        body.glitch-active canvas {
+            filter: blur(1px) contrast(1.2) hue-rotate(90deg);
+        }
+
         #controls {
             position: fixed; bottom: 0; left: 0; width: 100%; height: 280px; 
             background: linear-gradient(transparent, rgba(0,0,0,0.95) 15%);
@@ -64,7 +72,6 @@
         }
         button:hover { background: rgba(0, 255, 204, 0.1); border-color: #00ffcc; }
         button.active { background: #00ffcc; color: #000; border-color: #00ffcc; box-shadow: 0 0 15px rgba(0,255,204,0.6); text-shadow: none; font-weight: bold; }
-        /* GHOSTボタン用の特別スタイル */
         button.ghost-active { background: #cc00ff; color: #000; border-color: #cc00ff; box-shadow: 0 0 15px rgba(204,0,255,0.6); }
 
         .scale-grid { 
@@ -137,7 +144,7 @@
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v2.2 - SEPARATE GHOST</div>
+    <div id="version-display">v2.3 - GLITCH & FORCE</div>
 
     <button id="mode-btn">MODE: TOUCH</button>
     <button id="sensor-btn">SENSOR: OFF</button>
@@ -155,7 +162,7 @@
 
     <div id="controls">
         <div class="panel-section">
-            <div class="label">1. WAVEFORM</div>
+            <div class="label">1. WAVEFORM (DESTRUCT)</div>
             <canvas id="wave-canvas" width="240" height="90"></canvas>
             <div class="btn-group">
                 <button id="reset-btn">RESET</button>
@@ -248,6 +255,12 @@
         const cursorMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true, transparent: true, opacity: 0.6 });
         sensorCursor = new THREE.Mesh(cursorGeo, cursorMat);
         scene.add(sensorCursor);
+        
+        // Force Field Visualization
+        const forceFieldGeo = new THREE.RingGeometry(0.1, 1.0, 32);
+        const forceFieldMat = new THREE.MeshBasicMaterial({ color: 0xff0055, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+        const forceFieldMesh = new THREE.Mesh(forceFieldGeo, forceFieldMat);
+        scene.add(forceFieldMesh);
 
         function updateLayout() {
             const w = window.innerWidth; const h = window.innerHeight;
@@ -288,7 +301,8 @@
         setTimeout(updateLayout, 100);
 
         const visualObjects = []; 
-        
+        let glitchIntensity = 0;
+
         function animate() {
             requestAnimationFrame(animate);
             if(isStarted) drawEQ();
@@ -301,6 +315,18 @@
                 sensorCursor.position.y += (targetY - sensorCursor.position.y) * lerpFactor;
             }
 
+            // --- v2.3 Glitch Camera Shake ---
+            if (glitchIntensity > 0) {
+                camera.position.x = (Math.random() - 0.5) * glitchIntensity * 20;
+                camera.position.y = (Math.random() - 0.5) * glitchIntensity * 20;
+                glitchIntensity *= 0.8;
+                if(glitchIntensity < 0.01) {
+                    glitchIntensity = 0;
+                    camera.position.x = 0; camera.position.y = 0;
+                    document.body.classList.remove('glitch-active');
+                }
+            }
+
             meterCurrentVal.x += (meterTargetVal.x - meterCurrentVal.x) * lerpFactor;
             meterCurrentVal.y += (meterTargetVal.y - meterCurrentVal.y) * lerpFactor;
             
@@ -311,10 +337,46 @@
             const dt = 0.5; 
             const floorY = -(playAreaSize / 2) + playAreaOffsetY;
             
+            // --- v2.3 Force Field Interaction ---
+            let forcePos = null;
+            if (physicsMode && isPointerDown && currentPointerPos) {
+                 const cx = (currentPointerPos.x - window.innerWidth/2);
+                 const cy = -(currentPointerPos.y - window.innerHeight/2); // Y flip for Three.js
+                 forcePos = new THREE.Vector3(cx, cy, 0);
+                 
+                 forceFieldMesh.position.copy(forcePos);
+                 forceFieldMesh.scale.set(playAreaSize*0.15, playAreaSize*0.15, 1);
+                 forceFieldMesh.material.opacity = 0.3 + Math.random()*0.2;
+                 forceFieldMesh.rotation.z += 0.1;
+            } else {
+                 forceFieldMesh.material.opacity = 0;
+            }
+
             for (let i = balls.length - 1; i >= 0; i--) {
                 const b = balls[i];
                 b.vy -= GRAVITY * dt;
+                
+                // Repulsion logic
+                if (forcePos) {
+                    const dx = b.mesh.position.x - forcePos.x;
+                    const dy = b.mesh.position.y - forcePos.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    if (dist < playAreaSize * 0.2) {
+                        const force = (playAreaSize * 0.2 - dist) * 0.05;
+                        b.vx = (b.vx || 0) + (dx / dist) * force;
+                        b.vy += (dy / dist) * force;
+                    }
+                }
+                
+                // Apply Velocity
+                b.mesh.position.x += (b.vx || 0);
+                b.vx = (b.vx || 0) * 0.95; // Air drag for X
                 b.mesh.position.y += b.vy * dt;
+
+                // Walls
+                const limit = playAreaSize / 2;
+                if (b.mesh.position.x > limit) { b.mesh.position.x = limit; b.vx *= -1; }
+                if (b.mesh.position.x < -limit) { b.mesh.position.x = -limit; b.vx *= -1; }
 
                 if (b.mesh.position.y < floorY + b.radius) {
                     b.mesh.position.y = floorY + b.radius;
@@ -350,12 +412,17 @@
         }
         animate();
 
+        function triggerGlitch() {
+            glitchIntensity = 1.0;
+            document.body.classList.add('glitch-active');
+            // Tone.jsが起動していれば、マスターリミッターを少しきつくするなどの処理も可能
+        }
+
         // --- Audio & State ---
         let localADSR = { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1.5 };
         let localMixer = { synth: -4 };
         let localEQ = { low: {freq:100, gain:4}, mid: {freq:1000, gain:-2}, high: {freq:5000, gain:-6} };
         
-        // ★変更: 状態を分離
         let localAutoNote = { active: false, speed: 30 };
         let localAutoDrift = { active: false };
         
@@ -450,7 +517,6 @@
         const slA=document.getElementById('adsr-a'), slD=document.getElementById('adsr-d'), slS=document.getElementById('adsr-s'), slR=document.getElementById('adsr-r');
         const volSynth=document.getElementById('vol-synth');
         
-        // ★変更: ボタン参照変更
         const autoNoteBtn = document.getElementById('auto-note-btn');
         const autoDriftBtn = document.getElementById('auto-drift-btn');
         
@@ -556,10 +622,16 @@
         socket.on('sync_all_params', (params) => {
             for (const [key, val] of Object.entries(params)) { updateAllSystems(key, val); }
         });
-        socket.on('sync_param', (data) => { updateAllSystems(data.target, data.value); });
+        socket.on('sync_param', (data) => { 
+            updateAllSystems(data.target, data.value);
+            // v2.3: Ghostによる変更ならグリッチさせる
+            if(data.isGhost) triggerGlitch(); 
+        });
 
         socket.on('sync_waveform', d => { 
-            waveBuffer = d; drawWave(waveBuffer); if(synth) updateSynthWave(d); 
+            waveBuffer = d; drawWave(waveBuffer); if(synth) updateSynthWave(d);
+            // v2.3: 波形更新もグリッチ対象
+            if(isStarted) triggerGlitch();
         });
 
         socket.on('sync_adsr', d => { 
@@ -592,7 +664,6 @@
             }); 
         });
 
-        // ★変更: ノート用とドリフト用の受信
         socket.on('sync_auto_note', (data) => {
             localAutoNote = data;
             if(localAutoNote.active) { autoNoteBtn.textContent = "NOTES: ON"; autoNoteBtn.classList.add("active"); } 
@@ -613,7 +684,6 @@
 
         // --- UI Events (Emit) ---
         
-        // ★変更: ノートとドリフトそれぞれのEmit
         let lastAutoSync = 0;
         autoNoteBtn.addEventListener('click', (e) => { 
             e.stopPropagation(); 
@@ -814,11 +884,13 @@
             balls.push({
                 mesh: ballMesh,
                 vy: 0,
+                vx: 0, // vx init
                 radius: playAreaSize * 0.03,
                 id: id
             });
         }
 
+        let currentPointerPos = null;
         function handleInput(e, isMove) {
             if (!isStarted) return;
             const target = e.target;
@@ -828,6 +900,9 @@
 
             const cX = e.touches ? e.touches[0].clientX : e.clientX;
             const cY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            currentPointerPos = { x: cX, y: cY };
+
             const controlsRect = document.getElementById('controls').getBoundingClientRect();
             if (controlsRect.top <= cY) return;
 
@@ -836,6 +911,7 @@
             const normX = ((cX - centerX) / playAreaSize) + 0.5; const normY = ((cY - centerY) / playAreaSize) + 0.5;
 
             if (physicsMode) {
+                // v2.3: Gravity Mode - Only spawn on tap (not move), allow repulsion on hold
                 if (!isMove && normX >= 0 && normX <= 1 && normY >= 0 && normY <= 1) {
                     spawnBallVisual(normX, normY, socket.id, true);
                     socket.emit('spawn_ball', { x: normX, y: normY });
@@ -847,8 +923,19 @@
         }
         let isPointerDown = false;
         const onPointerDown = e => { isPointerDown = true; handleInput(e, false); };
-        const onPointerMove = e => { if (isPointerDown) { const target = e.target; if (!document.getElementById('controls').contains(target)) { e.preventDefault(); handleInput(e, true); } } };
-        const onPointerUp = () => { isPointerDown = false; prevNotePos = null; };
+        const onPointerMove = e => { 
+            if (isPointerDown) { 
+                const target = e.target; 
+                if (!document.getElementById('controls').contains(target)) { 
+                    e.preventDefault(); 
+                    handleInput(e, true); 
+                } 
+            } else {
+                currentPointerPos = null; // Reset if not dragging
+            }
+        };
+        const onPointerUp = () => { isPointerDown = false; prevNotePos = null; currentPointerPos = null; };
+        
         window.addEventListener('mousedown', onPointerDown); window.addEventListener('mousemove', onPointerMove); window.addEventListener('mouseup', onPointerUp);
         window.addEventListener('touchstart', onPointerDown, {passive: false}); window.addEventListener('touchmove', onPointerMove, {passive: false}); window.addEventListener('touchend', onPointerUp);
 
