@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Synth Master Sync v2.9 - Value Display</title>
+    <title>Synth Master Sync v2.9.1 - Fix ADSR & PAN</title>
     <style>
         /* --- Base Aesthetic --- */
         body { margin: 0; overflow: hidden; background: #050505; touch-action: none; color: #ccc; font-family: 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.05em; }
@@ -59,10 +59,9 @@
         /* Mixer Container Alignment Fix */
         .mixer-container { 
             display: flex; gap: 20px; 
-            /* height: 100%; 削除してFlex制御へ */
             height: auto; flex-grow: 1;
             align-items: center; justify-content: center; width: 100%; 
-            margin-top: -10px; /* 全体を少し上に持ち上げる */
+            margin-top: -10px; 
         }
         #adsr-container { display: flex; flex-direction: column; align-items: center; width: 100%; }
         
@@ -105,7 +104,7 @@
             white-space: nowrap; width: 100%; position: absolute; bottom: 0;
         }
         
-        /* ★新機能: 数値表示スタイル */
+        /* Value Display Style */
         .val-display {
             font-size: 9px; color: #00d2ff; text-align: center; width: 100%;
             position: absolute; top: 0; font-family: 'Courier New', monospace;
@@ -177,7 +176,7 @@
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v2.9 - VAL DISPLAY</div>
+    <div id="version-display">v2.9.1 - Fix ADSR & PAN</div>
 
     <button id="mode-btn">MODE: TOUCH</button>
     <button id="sensor-btn">SENSOR: OFF</button>
@@ -395,7 +394,6 @@
             const wCanvas = document.getElementById('wave-canvas');
             const eCanvas = document.getElementById('eq-canvas');
             const aCanvas = document.getElementById('adsr-canvas');
-            // Canvas Size for new layout
             wCanvas.width = 160; wCanvas.height = 80;
             eCanvas.width = 224; eCanvas.height = 90;
             aCanvas.width = 224; aCanvas.height = 60;
@@ -586,13 +584,11 @@
             eqLow.connect(eqMid);
             panner.connect(eqLow);
 
-            // Unison Oscillator Setup (Additional Feature)
-            // Existing function is preserved by using default spread/count where appropriate
             synth = new Tone.PolySynth(Tone.Synth, {
                 maxPolyphony: 32, 
                 volume: -10,
                 oscillator: { 
-                    type: "fattriangle", // Enables Spread
+                    type: "fattriangle", 
                     count: 3, 
                     spread: 30 
                 }, 
@@ -626,11 +622,9 @@
         const slDFb = document.getElementById('fx-delay-fb');
         const slPan = document.getElementById('fx-pan');
         
-        // Unison Sliders
         const slVoices = document.getElementById('uni-voices');
         const slSpread = document.getElementById('uni-spread');
 
-        // --- Display Value Helpers ---
         function updateValDisplay(id, val, suffix='') {
             const el = document.getElementById('disp-' + id);
             if(el) el.textContent = val + suffix;
@@ -699,17 +693,16 @@
                 if(!skipUI) autoSpeed.value = speed;
                 updateValDisplay('auto-speed', speed, '%');
             }
-            // ★追加機能: UNISON制御
             else if (target === 'UNISON_VOICES') {
                 let voices = val;
-                if (val <= 1.0 && !Number.isInteger(val)) voices = Math.floor(val * 4) + 1; // Normalize対策
+                if (val <= 1.0 && !Number.isInteger(val)) voices = Math.floor(val * 4) + 1; 
                 synth.set({ oscillator: { count: voices } });
                 if(!skipUI && slVoices) slVoices.value = voices;
                 updateValDisplay('uni-voices', voices);
             }
             else if (target === 'UNISON_SPREAD') {
                 let spread = val;
-                if (val <= 1.0) spread = val * 100; // Normalize対策
+                if (val <= 1.0) spread = val * 100;
                 synth.set({ oscillator: { spread: spread } });
                 if(!skipUI && slSpread) slSpread.value = spread;
                 updateValDisplay('uni-spread', Math.round(spread));
@@ -720,7 +713,12 @@
             if (!isStarted || !isSensorActive) return;
             const gamma = e.gamma || 0; const normGamma = Math.max(-1, Math.min(1, gamma / 45)); const valX = (normGamma + 1) / 2; 
             const beta = e.beta || 0; const normBeta = Math.max(-1, Math.min(1, (beta - 45) / 45)); const valY = (1.0 - ((normBeta + 1) / 2)); 
-            updateAllSystems(myTargets.x, valX); updateAllSystems(myTargets.y, valY);
+            
+            // Local update immediately
+            updateAllSystems(myTargets.x, valX); 
+            updateAllSystems(myTargets.y, valY);
+            
+            // Network sync throttled
             const now = Date.now();
             if (now - lastSensorSync > 100) {
                 socket.emit('update_param', { target: myTargets.x, value: valX });
@@ -771,8 +769,7 @@
         socket.on('sync_adsr', d => { 
             localADSR = d; 
             const normD = (d.decay - 0.1) / 1.9; const normR = (d.release - 0.1) / 4.9;
-            updateAllSystems('DECAY', Math.max(0, Math.min(1, normD)));
-            updateAllSystems('RELEASE', Math.max(0, Math.min(1, normR)));
+            updateAllSystems('DECAY', normD, true); updateAllSystems('RELEASE', normR, true);
             
             slA.value=d.attack; slS.value=d.sustain; 
             updateValDisplay('adsr-a', d.attack.toFixed(2), 's');
@@ -818,7 +815,6 @@
         slDFb.addEventListener('input', () => emitParam('DELAY_FB', parseFloat(slDFb.value)));
         slPan.addEventListener('input', () => emitParam('PAN', parseFloat(slPan.value)));
         
-        // Unison Events
         slVoices.addEventListener('input', () => emitParam('UNISON_VOICES', parseInt(slVoices.value)));
         slSpread.addEventListener('input', () => emitParam('UNISON_SPREAD', parseFloat(slSpread.value)));
 
@@ -836,6 +832,7 @@
             updateAllSystems('VOL', normVol, true); localMixer.synth = val;
             if(Date.now()-lastMixerSync>30){socket.emit('update_mixer',localMixer);lastMixerSync=Date.now();} 
         });
+        
         let lastAdsrSync = 0;
         const updateADSR=()=>{ 
             localADSR={attack:parseFloat(slA.value),decay:parseFloat(slD.value),sustain:parseFloat(slS.value),release:parseFloat(slR.value)};
@@ -846,6 +843,9 @@
             updateValDisplay('adsr-s', Math.round(localADSR.sustain*100), '%');
             
             drawADSRVisual();
+            // ★FIX: Apply ADSR locally so sender hears changes immediately
+            if(synth) synth.set({ envelope: localADSR });
+
             if(Date.now() - lastAdsrSync > 30) { socket.emit('update_adsr',localADSR); lastAdsrSync = Date.now(); }
         };
         [slA,slD,slS,slR].forEach(s=>{ s.addEventListener('input',updateADSR); });
