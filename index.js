@@ -72,7 +72,10 @@ let globalParams = {
     'RELEASE': 0.3,
     'FREQ': 0.3,
     'UNISON_VOICES': 3,
-    'UNISON_SPREAD': 30
+    'UNISON_SPREAD': 30,
+    // ★追加: 物理演算パラメータ
+    'GRAVITY_Y': 0.005, // 以前より弱く設定 (0.015 -> 0.005)
+    'GRAVITY_X': 0.5    // 0.5が中心(無風)
 };
 
 // --- 自動演奏ロジック (音符) ---
@@ -82,18 +85,10 @@ function scheduleNextAutoNote() {
     
     playAutoNote();
     
-    // ★修正ポイント: Speedの計算ロジックを「2乗カーブ」に変更
-    // これにより、数値を上げた時の加速感がより直感的になります。
-    const slowLimit = 8000; // 最遅: 8秒
-    const fastLimit = 150;  // 最速: 0.15秒
+    const slowLimit = 8000; 
+    const fastLimit = 150;  
     
-    const ratio = autoNoteState.speed / 100; // 0.0 〜 1.0
-    
-    // 計算式: 最速 + (差分 * (1 - ratio)^2)
-    // ratio 0.0 (0%)  -> 1.0倍の差分を加算 -> 8000ms
-    // ratio 0.5 (50%) -> 0.25倍の差分 -> 約2100ms (以前は4000msだったので、50%でも結構動くようになる)
-    // ratio 0.8 (80%) -> 0.04倍の差分 -> 約460ms (以前は1700msだったので、かなり速くなる)
-    // ratio 1.0 (100%) -> 0.0倍の差分 -> 150ms
+    const ratio = autoNoteState.speed / 100;
     const baseInterval = fastLimit + (slowLimit - fastLimit) * Math.pow(1 - ratio, 2);
 
     const randomFactor = 0.2 + (Math.random() * 1.6); 
@@ -127,6 +122,8 @@ function startAutoParamDrift() {
     let waveformCounter = 0;
 
     autoDriftInterval = setInterval(() => {
+        // GRAVITY_X/Y もGhost操作の対象にするかはお好みですが、
+        // 挙動が変わりすぎると混乱するため、ここでは除外しておきます。
         const keys = ['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX', 'DECAY', 'RELEASE', 'UNISON_SPREAD'];
         const numParamsToChange = Math.random() > 0.7 ? 2 : 1;
 
@@ -257,7 +254,6 @@ io.on('connection', (socket) => {
             globalParams[data.target] = data.value;
             socket.broadcast.emit('sync_param', data);
             
-            // SPEEDパラメータの連動
             if (data.target === 'FREQ') {
                 autoNoteState.speed = Math.floor(data.value * 100);
             }
