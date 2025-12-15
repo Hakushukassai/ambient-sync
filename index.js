@@ -60,24 +60,19 @@ let autoDriftState = { active: false };
 let autoNoteTimeout = null;
 let autoDriftInterval = null;
 
-// パラメータ初期値 (すべて0.0〜1.0、または実数値で管理)
-// クライアント側でマッピングされるものは0-1で保持し、直値のものはそのまま保持する設計に統一
+// パラメータ初期値
 let globalParams = {
-    'FILTER': 0.5,      // 0-1
-    'PAN': 0.5,         // 0-1
-    'VOL': 0.8,         // 0-1 (Display用正規化値)
-    'REVERB': 0.0,      // 0-1
-    'DELAY_FB': 0.3,    // 0-1
-    'DELAY_MIX': 0.0,   // 0-1
-    'DECAY': 0.1,       // 0-1 (Mapped)
-    'RELEASE': 0.3,     // 0-1 (Mapped)
-    'FREQ': 0.3,        // 0-1 (Speed)
-    
-    // ★追加機能: UNISON (オシレーター拡張)
-    // 既存機能を阻害しないよう、デフォルトは影響の少ない値にしておくことも可能だが、
-    // v2.8のFAT感を出すため初期値を少し入れています。
-    'UNISON_VOICES': 3,  // 整数 1〜5
-    'UNISON_SPREAD': 30  // 0〜100
+    'FILTER': 0.5,
+    'PAN': 0.5,
+    'VOL': 0.8,
+    'REVERB': 0.0,
+    'DELAY_FB': 0.3,
+    'DELAY_MIX': 0.0,
+    'DECAY': 0.1,
+    'RELEASE': 0.3,
+    'FREQ': 0.3,
+    'UNISON_VOICES': 3,
+    'UNISON_SPREAD': 30
 };
 
 // --- 自動演奏ロジック (音符) ---
@@ -87,9 +82,20 @@ function scheduleNextAutoNote() {
     
     playAutoNote();
     
-    const slowLimit = 8000;
-    const fastLimit = 150;
-    const baseInterval = slowLimit - ((autoNoteState.speed / 100) * (slowLimit - fastLimit));
+    // ★修正ポイント: Speedの計算ロジックを「2乗カーブ」に変更
+    // これにより、数値を上げた時の加速感がより直感的になります。
+    const slowLimit = 8000; // 最遅: 8秒
+    const fastLimit = 150;  // 最速: 0.15秒
+    
+    const ratio = autoNoteState.speed / 100; // 0.0 〜 1.0
+    
+    // 計算式: 最速 + (差分 * (1 - ratio)^2)
+    // ratio 0.0 (0%)  -> 1.0倍の差分を加算 -> 8000ms
+    // ratio 0.5 (50%) -> 0.25倍の差分 -> 約2100ms (以前は4000msだったので、50%でも結構動くようになる)
+    // ratio 0.8 (80%) -> 0.04倍の差分 -> 約460ms (以前は1700msだったので、かなり速くなる)
+    // ratio 1.0 (100%) -> 0.0倍の差分 -> 150ms
+    const baseInterval = fastLimit + (slowLimit - fastLimit) * Math.pow(1 - ratio, 2);
+
     const randomFactor = 0.2 + (Math.random() * 1.6); 
     const nextDelay = baseInterval * randomFactor;
     
@@ -121,8 +127,6 @@ function startAutoParamDrift() {
     let waveformCounter = 0;
 
     autoDriftInterval = setInterval(() => {
-        // GHOSTが操作するパラメータ
-        // 安全のためUNISON_VOICES（負荷が高い）は自動操作から除外、または頻度を下げる
         const keys = ['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX', 'DECAY', 'RELEASE', 'UNISON_SPREAD'];
         const numParamsToChange = Math.random() > 0.7 ? 2 : 1;
 
@@ -130,20 +134,15 @@ function startAutoParamDrift() {
             const key = keys[Math.floor(Math.random() * keys.length)];
             let val = globalParams[key];
 
-            // ランダムウォーク
             if (Math.random() < 0.2) {
-                // Warp (急激な変化)
                 if(key === 'UNISON_SPREAD') val = Math.random() * 100;
                 else val = Math.random(); 
             } else {
-                // Drift (緩やかな変化)
                 let drift = (Math.random() - 0.5) * 0.1;
-                if(key === 'UNISON_SPREAD') drift *= 100; // スケール合わせ
-                
+                if(key === 'UNISON_SPREAD') drift *= 100;
                 val += drift;
             }
             
-            // クランプ処理 (範囲制限)
             if(key === 'UNISON_SPREAD') {
                 val = Math.max(0, Math.min(100, val));
             } else {
