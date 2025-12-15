@@ -68,7 +68,10 @@ let globalParams = {
     'DELAY_MIX': 0.0,
     'DECAY': 0.1,
     'RELEASE': 0.3,
-    'FREQ': 0.3
+    'FREQ': 0.3,
+    // ★追加: ユニゾン用パラメータ
+    'UNISON_VOICES': 3,  // 重ねる数 (1〜5)
+    'UNISON_SPREAD': 30  // 広がり (Detune)
 };
 
 // --- 自動演奏ロジック (音符) ---
@@ -109,17 +112,20 @@ function playAutoNote() {
 // --- 自動操作ロジック (パラメータ & 波形破壊) ---
 function startAutoParamDrift() {
     if (autoDriftInterval) clearInterval(autoDriftInterval);
-    
-    // v2.3: 波形破壊の間隔カウンタ
     let waveformCounter = 0;
 
     autoDriftInterval = setInterval(() => {
-        const keys = ['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX', 'DECAY', 'RELEASE'];
+        // GHOSTが操作するパラメータにUNISON系も追加
+        const keys = ['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX', 'DECAY', 'RELEASE', 'UNISON_SPREAD'];
         const numParamsToChange = Math.random() > 0.7 ? 2 : 1;
 
         for(let i=0; i<numParamsToChange; i++) {
             const key = keys[Math.floor(Math.random() * keys.length)];
             let val = globalParams[key];
+
+            // UNISON_SPREADなどは範囲が違うので正規化して扱う前提だが
+            // ここでは簡易的に0-1の値を保持させ、クライアントで変換させる設計にする
+            // (globalParamsの値は基本的に0.0〜1.0で管理する運用)
 
             if (Math.random() < 0.2) {
                 val = Math.random(); // Warp
@@ -131,17 +137,13 @@ function startAutoParamDrift() {
             val = Math.max(0, Math.min(1, val));
             globalParams[key] = val;
             
-            io.emit('sync_param', { target: key, value: val, isGhost: true }); // isGhostフラグ追加
+            io.emit('sync_param', { target: key, value: val, isGhost: true }); 
         }
 
-        // v2.3: 波形破壊ロジック (Waveform Corruption)
-        // 5回に1回程度(約1秒に1回)、波形を少し歪ませる
         waveformCounter++;
         if (waveformCounter > 4 && Math.random() < 0.6) {
             waveformCounter = 0;
-            // 現在の波形にノイズを混ぜる
             currentWaveform = currentWaveform.map(v => {
-                // 10%の確率でスパイクノイズ、それ以外は微小変化
                 const noise = Math.random() < 0.1 ? (Math.random()-0.5)*0.5 : (Math.random()-0.5)*0.05;
                 return Math.max(-1, Math.min(1, v + noise));
             });
