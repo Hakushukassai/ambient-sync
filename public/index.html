@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Synth Master Sync v2.9.1 - Fix ADSR & PAN</title>
+    <title>Synth Master Sync v2.9.2 - Physics Control</title>
     <style>
         /* --- Base Aesthetic --- */
         body { margin: 0; overflow: hidden; background: #050505; touch-action: none; color: #ccc; font-family: 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.05em; }
@@ -176,7 +176,7 @@
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v2.9.1 - Fix ADSR & PAN</div>
+    <div id="version-display">v2.9.2 - Physics Control</div>
 
     <button id="mode-btn">MODE: TOUCH</button>
     <button id="sensor-btn">SENSOR: OFF</button>
@@ -314,6 +314,22 @@
                 <button class="scale-btn" data-scale="WHOLE_TONE">WHOLE</button>
             </div>
         </div>
+
+        <div class="panel-section" id="panel-physics">
+            <div class="label">7. PHYSICS</div>
+            <div class="mixer-container">
+                <div class="slider-group">
+                    <div class="val-display" id="disp-phys-grav-y">Low</div>
+                    <div class="slider-wrapper"><input type="range" class="vertical" id="phys-grav-y" min="0.001" max="0.02" step="0.001" value="0.005"></div>
+                    <span class="param-label">GRAV.Y</span>
+                </div>
+                <div class="slider-group">
+                    <div class="val-display" id="disp-phys-grav-x">0</div>
+                    <div class="slider-wrapper"><input type="range" class="vertical" id="phys-grav-x" min="0" max="1" step="0.01" value="0.5"></div>
+                    <span class="param-label">GRAV.X</span>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -350,7 +366,8 @@
         let meterCurrentVal = { x: 0, y: 0 };
         
         const balls = [];
-        const GRAVITY_NORMALIZED = 0.015; 
+        // ★修正: 物理演算の変数を追加
+        let localPhysics = { x: 0, y: 0.005 }; // 初期値: Y=0.005(Weak), X=0(Center)
         const BOUNCE_DAMPING = 0.7; 
 
         const cursorGeo = new THREE.RingGeometry(0.8, 1.0, 32); 
@@ -444,7 +461,12 @@
 
             for (let i = balls.length - 1; i >= 0; i--) {
                 const b = balls[i];
-                b.vy -= GRAVITY_NORMALIZED * dt;
+                // ★修正: 可変重力を使用
+                b.vy -= localPhysics.y * dt;
+                // ★修正: 横方向重力(風)を追加 (slider 0-1 mapped to force)
+                // 0.5 is center. 0.0 is left force, 1.0 is right force.
+                const windForce = (localPhysics.x - 0.5) * 0.001; 
+                b.vx = (b.vx || 0) + windForce * dt;
                 
                 if (forceNormPos) {
                     const dx = b.x - forceNormPos.x;
@@ -508,6 +530,7 @@
             else if (['VOL', 'FREQ'].includes(targetParam)) panelId = 'panel-mix';
             else if (['DECAY', 'RELEASE'].includes(targetParam)) panelId = 'panel-adsr';
             else if (['WAVE', 'UNISON_SPREAD'].includes(targetParam)) panelId = 'panel-wave'; 
+            else if (['GRAVITY_X', 'GRAVITY_Y'].includes(targetParam)) panelId = 'panel-physics';
 
             if (panelId) {
                 const el = document.getElementById(panelId);
@@ -624,6 +647,10 @@
         
         const slVoices = document.getElementById('uni-voices');
         const slSpread = document.getElementById('uni-spread');
+        
+        // ★追加: Physics Sliders
+        const slGravY = document.getElementById('phys-grav-y');
+        const slGravX = document.getElementById('phys-grav-x');
 
         function updateValDisplay(id, val, suffix='') {
             const el = document.getElementById('disp-' + id);
@@ -707,6 +734,19 @@
                 if(!skipUI && slSpread) slSpread.value = spread;
                 updateValDisplay('uni-spread', Math.round(spread));
             }
+            // ★追加: 物理演算パラメータの更新
+            else if (target === 'GRAVITY_Y') {
+                localPhysics.y = val;
+                if(!skipUI && slGravY) slGravY.value = val;
+                const txt = val < 0.005 ? "Low" : (val > 0.015 ? "High" : "Mid");
+                updateValDisplay('phys-grav-y', txt);
+            }
+            else if (target === 'GRAVITY_X') {
+                localPhysics.x = val;
+                if(!skipUI && slGravX) slGravX.value = val;
+                const offset = Math.round((val - 0.5) * 100);
+                updateValDisplay('phys-grav-x', offset);
+            }
         }
 
         function handleSensor(e) {
@@ -775,6 +815,8 @@
             updateValDisplay('adsr-a', d.attack.toFixed(2), 's');
             updateValDisplay('adsr-s', Math.round(d.sustain*100), '%');
             drawADSRVisual();
+            if(synth) synth.set({ envelope: localADSR }); // Fixed ADSR locally
+
             if(synth) synth.set({envelope:d});
         });
         socket.on('sync_mixer', d => {
@@ -817,6 +859,10 @@
         
         slVoices.addEventListener('input', () => emitParam('UNISON_VOICES', parseInt(slVoices.value)));
         slSpread.addEventListener('input', () => emitParam('UNISON_SPREAD', parseFloat(slSpread.value)));
+        
+        // ★追加: Physics Slider Events
+        slGravY.addEventListener('input', () => emitParam('GRAVITY_Y', parseFloat(slGravY.value)));
+        slGravX.addEventListener('input', () => emitParam('GRAVITY_X', parseFloat(slGravX.value)));
 
         let lastAutoSync = 0;
         autoNoteBtn.addEventListener('click', (e) => { e.stopPropagation(); localAutoNote.active = !localAutoNote.active; socket.emit('update_auto_note', localAutoNote); });
@@ -843,7 +889,6 @@
             updateValDisplay('adsr-s', Math.round(localADSR.sustain*100), '%');
             
             drawADSRVisual();
-            // ★FIX: Apply ADSR locally so sender hears changes immediately
             if(synth) synth.set({ envelope: localADSR });
 
             if(Date.now() - lastAdsrSync > 30) { socket.emit('update_adsr',localADSR); lastAdsrSync = Date.now(); }
