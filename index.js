@@ -73,9 +73,10 @@ let globalParams = {
     'FREQ': 0.3,
     'UNISON_VOICES': 3,
     'UNISON_SPREAD': 30,
-    // ★Update: 初期重力を低めに、かつ完全に0も許容
     'GRAVITY_Y': 0.005, 
-    'GRAVITY_X': 0.5    // 0.5が中心(無風)
+    'GRAVITY_X': 0.5,
+    // ★追加: ボールの寿命 (初期値 5000ms = 5秒)
+    'PHYSICS_LIFESPAN': 0.5 // 0.0〜1.0 を 100ms〜10000ms にマッピングします
 };
 
 // --- 自動演奏ロジック (音符) ---
