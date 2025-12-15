@@ -73,8 +73,8 @@ let globalParams = {
     'FREQ': 0.3,
     'UNISON_VOICES': 3,
     'UNISON_SPREAD': 30,
-    // ★追加: 物理演算パラメータ
-    'GRAVITY_Y': 0.005, // 以前より弱く設定 (0.015 -> 0.005)
+    // ★Update: 初期重力を低めに、かつ完全に0も許容
+    'GRAVITY_Y': 0.005, 
     'GRAVITY_X': 0.5    // 0.5が中心(無風)
 };
 
@@ -122,8 +122,6 @@ function startAutoParamDrift() {
     let waveformCounter = 0;
 
     autoDriftInterval = setInterval(() => {
-        // GRAVITY_X/Y もGhost操作の対象にするかはお好みですが、
-        // 挙動が変わりすぎると混乱するため、ここでは除外しておきます。
         const keys = ['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX', 'DECAY', 'RELEASE', 'UNISON_SPREAD'];
         const numParamsToChange = Math.random() > 0.7 ? 2 : 1;
 
