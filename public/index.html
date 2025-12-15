@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Synth Master Sync v2.9.2 - Physics Control</title>
+    <title>Synth Master Sync v3.0 - Omni Physics</title>
     <style>
         /* --- Base Aesthetic --- */
         body { margin: 0; overflow: hidden; background: #050505; touch-action: none; color: #ccc; font-family: 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.05em; }
@@ -176,7 +176,7 @@
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v2.9.2 - Physics Control</div>
+    <div id="version-display">v3.0.0 - Omni Physics</div>
 
     <button id="mode-btn">MODE: TOUCH</button>
     <button id="sensor-btn">SENSOR: OFF</button>
@@ -320,7 +320,7 @@
             <div class="mixer-container">
                 <div class="slider-group">
                     <div class="val-display" id="disp-phys-grav-y">Low</div>
-                    <div class="slider-wrapper"><input type="range" class="vertical" id="phys-grav-y" min="0.001" max="0.02" step="0.001" value="0.005"></div>
+                    <div class="slider-wrapper"><input type="range" class="vertical" id="phys-grav-y" min="0" max="0.02" step="0.0001" value="0.005"></div>
                     <span class="param-label">GRAV.Y</span>
                 </div>
                 <div class="slider-group">
@@ -366,8 +366,7 @@
         let meterCurrentVal = { x: 0, y: 0 };
         
         const balls = [];
-        // ★修正: 物理演算の変数を追加
-        let localPhysics = { x: 0, y: 0.005 }; // 初期値: Y=0.005(Weak), X=0(Center)
+        let localPhysics = { x: 0, y: 0.005 }; 
         const BOUNCE_DAMPING = 0.7; 
 
         const cursorGeo = new THREE.RingGeometry(0.8, 1.0, 32); 
@@ -425,11 +424,20 @@
 
         const visualObjects = []; 
 
+        // ★Update: Frame independent timing logic
+        let lastFrameTime = performance.now();
+
         function animate() {
             requestAnimationFrame(animate);
+            
+            // Sync Fix: Calculate Delta Time
+            const now = performance.now();
+            const delta = Math.min((now - lastFrameTime) / 16.667, 4.0); // Cap at 4x to prevent huge jumps
+            lastFrameTime = now;
+
             if(isStarted) drawEQ();
 
-            const lerpFactor = 0.1; 
+            const lerpFactor = 0.1 * delta; // Apply delta
             if(sensorCursor) {
                 const targetY = cursorTargetPos.y + playAreaOffsetY;
                 sensorCursor.position.x += (cursorTargetPos.x - sensorCursor.position.x) * lerpFactor;
@@ -442,8 +450,7 @@
             if(Math.abs(meterTargetVal.x - meterCurrentVal.x) > 0.001) fillX.style.height = (meterCurrentVal.x * 100) + "%";
             if(Math.abs(meterTargetVal.y - meterCurrentVal.y) > 0.001) fillY.style.height = (meterCurrentVal.y * 100) + "%";
 
-            // Physics Update (Normalized)
-            const dt = 1.0; 
+            // Physics Update (Normalized & Sync Corrected)
             let forceNormPos = null;
             if (physicsMode && isPointerDown && currentPointerPos) {
                  const cx = (currentPointerPos.x - window.innerWidth/2);
@@ -461,38 +468,61 @@
 
             for (let i = balls.length - 1; i >= 0; i--) {
                 const b = balls[i];
-                // ★修正: 可変重力を使用
-                b.vy -= localPhysics.y * dt;
-                // ★修正: 横方向重力(風)を追加 (slider 0-1 mapped to force)
-                // 0.5 is center. 0.0 is left force, 1.0 is right force.
-                const windForce = (localPhysics.x - 0.5) * 0.001; 
-                b.vx = (b.vx || 0) + windForce * dt;
                 
+                // Gravity & Wind
+                b.vy -= localPhysics.y * delta;
+                const windForce = (localPhysics.x - 0.5) * 0.001; 
+                b.vx = (b.vx || 0) + windForce * delta;
+                
+                // Force Field
                 if (forceNormPos) {
                     const dx = b.x - forceNormPos.x;
                     const dy = b.y - forceNormPos.y;
                     const dist = Math.sqrt(dx*dx + dy*dy);
                     if (dist < 0.2) {
-                        const force = (0.2 - dist) * 0.08;
+                        const force = (0.2 - dist) * 0.08 * delta; // Delta applied
                         b.vx = (b.vx || 0) + (dx / dist) * force;
                         b.vy += (dy / dist) * force;
                     }
                 }
                 
-                b.x += (b.vx || 0);
-                b.vx = (b.vx || 0) * 0.95; 
-                b.y += b.vy * dt;
+                // Position Update
+                b.x += (b.vx || 0) * delta;
+                // Friction
+                b.vx = (b.vx || 0) * Math.pow(0.99, delta); // Delta corrected friction
+                b.y += b.vy * delta;
 
-                if (b.x > 1.0) { b.x = 1.0; b.vx *= -1; }
-                if (b.x < 0.0) { b.x = 0.0; b.vx *= -1; }
+                // ★Update: Omni-directional collision sounds & Low Gravity fix
 
+                // Right Wall
+                if (b.x > 1.0) { 
+                    b.x = 1.0; b.vx *= -1; 
+                    triggerNoteFromPhysics(b.x, Math.abs(b.vx) * 10.0); 
+                }
+                // Left Wall
+                if (b.x < 0.0) { 
+                    b.x = 0.0; b.vx *= -1; 
+                    triggerNoteFromPhysics(b.x, Math.abs(b.vx) * 10.0); 
+                }
+
+                // Ceiling
+                if (b.y > 1.0) {
+                    b.y = 1.0;
+                    b.vy *= -BOUNCE_DAMPING;
+                    triggerNoteFromPhysics(b.x, Math.abs(b.vy) * 10.0);
+                }
+
+                // Floor
                 if (b.y < 0.0) {
                     b.y = 0.0;
                     b.vy *= -BOUNCE_DAMPING;
 
-                    if (Math.abs(b.vy) > 0.02) {
-                        triggerNoteFromPhysics(b.x, Math.abs(b.vy) * 10.0);
-                    } else if (Math.abs(b.vy) < 0.01 && b.y < 0.01) {
+                    // Removed velocity threshold for sound.
+                    // If velocity is very low, it will just play quiet.
+                    triggerNoteFromPhysics(b.x, Math.abs(b.vy) * 10.0);
+
+                    // Despawn check: Low velocity AND very close to floor
+                    if (Math.abs(b.vy) < 0.001 && b.y < 0.01) {
                          scene.remove(b.mesh);
                          balls.splice(i, 1);
                          continue;
@@ -503,10 +533,10 @@
                 b.mesh.position.set(pixelX, pixelY, 0);
             }
 
-            const now = Date.now();
+            const visualNow = Date.now();
             for (let i = visualObjects.length - 1; i >= 0; i--) {
                 const obj = visualObjects[i];
-                const progress = (now - obj.startTime) / (obj.duration * 1000);
+                const progress = (visualNow - obj.startTime) / (obj.duration * 1000);
                 if (progress >= 1) {
                     scene.remove(obj.mesh);
                     visualObjects.splice(i, 1);
@@ -648,7 +678,6 @@
         const slVoices = document.getElementById('uni-voices');
         const slSpread = document.getElementById('uni-spread');
         
-        // ★追加: Physics Sliders
         const slGravY = document.getElementById('phys-grav-y');
         const slGravX = document.getElementById('phys-grav-x');
 
@@ -734,7 +763,6 @@
                 if(!skipUI && slSpread) slSpread.value = spread;
                 updateValDisplay('uni-spread', Math.round(spread));
             }
-            // ★追加: 物理演算パラメータの更新
             else if (target === 'GRAVITY_Y') {
                 localPhysics.y = val;
                 if(!skipUI && slGravY) slGravY.value = val;
@@ -754,11 +782,9 @@
             const gamma = e.gamma || 0; const normGamma = Math.max(-1, Math.min(1, gamma / 45)); const valX = (normGamma + 1) / 2; 
             const beta = e.beta || 0; const normBeta = Math.max(-1, Math.min(1, (beta - 45) / 45)); const valY = (1.0 - ((normBeta + 1) / 2)); 
             
-            // Local update immediately
             updateAllSystems(myTargets.x, valX); 
             updateAllSystems(myTargets.y, valY);
             
-            // Network sync throttled
             const now = Date.now();
             if (now - lastSensorSync > 100) {
                 socket.emit('update_param', { target: myTargets.x, value: valX });
@@ -815,8 +841,7 @@
             updateValDisplay('adsr-a', d.attack.toFixed(2), 's');
             updateValDisplay('adsr-s', Math.round(d.sustain*100), '%');
             drawADSRVisual();
-            if(synth) synth.set({ envelope: localADSR }); // Fixed ADSR locally
-
+            if(synth) synth.set({ envelope: localADSR }); 
             if(synth) synth.set({envelope:d});
         });
         socket.on('sync_mixer', d => {
@@ -860,7 +885,6 @@
         slVoices.addEventListener('input', () => emitParam('UNISON_VOICES', parseInt(slVoices.value)));
         slSpread.addEventListener('input', () => emitParam('UNISON_SPREAD', parseFloat(slSpread.value)));
         
-        // ★追加: Physics Slider Events
         slGravY.addEventListener('input', () => emitParam('GRAVITY_Y', parseFloat(slGravY.value)));
         slGravX.addEventListener('input', () => emitParam('GRAVITY_X', parseFloat(slGravX.value)));
 
@@ -1012,7 +1036,11 @@
             const noteIndex = Math.floor((1 - clampX) * scaleNotes.length);
             const note = scaleNotes[Math.min(noteIndex, scaleNotes.length - 1)];
             if (!synth) return;
-            const velocity = Math.min(1.0, 0.3 + volumeGain);
+            
+            // ★Update: Force minimum volume for low gravity/velocity
+            // volumeGain comes from velocity. Even if velocity is 0, add base 0.1
+            const velocity = Math.min(1.0, 0.1 + (volumeGain || 0));
+            
             synth.triggerAttackRelease(note, "8n", undefined, velocity);
             const xPos = (clampX - 0.5) * playAreaSize; const yPos = -(playAreaSize / 2) + playAreaOffsetY;
             const mesh = new THREE.Mesh(new THREE.RingGeometry(0.98, 1.0, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, side: THREE.DoubleSide }));
@@ -1037,6 +1065,12 @@
             const wX = (x - 0.5) * playAreaSize; 
             const wY = (y - 0.5) * playAreaSize + playAreaOffsetY;
             ballMesh.position.set(wX, wY, 0); scene.add(ballMesh);
+            
+            // ★Update: If spawning at floor level, ensure instant sound trigger check
+            if (y <= 0.01) {
+                triggerNoteFromPhysics(x, 0.5); // Force sound on spawn if low
+            }
+
             balls.push({ mesh: ballMesh, vy: 0, vx: 0, x: x, y: y, id: id });
         }
         let currentPointerPos = null;
