@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Synth Master Sync v2.7 - SYNCED GRAVITY</title>
+    <title>Synth Master Sync v2.8 - FAT UNISON</title>
     <style>
         /* --- Base Aesthetic --- */
         body { margin: 0; overflow: hidden; background: #050505; touch-action: none; color: #ccc; font-family: 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.05em; }
@@ -60,9 +60,11 @@
         
         /* Sliders Layout */
         .sliders { display: flex; gap: 2px; width: 100%; justify-content: space-between; margin-top: 10px; height: 100px; }
+        
+        /* ★修正: justify-content: center でフェーダーを垂直方向中央に */
         .slider-group { 
             display: flex; flex-direction: column; align-items: center; flex: 1; 
-            height: 100%; justify-content: flex-end; 
+            height: 100%; justify-content: center; /* Center Vertically */
             position: relative;
         }
         
@@ -80,12 +82,8 @@
             cursor: pointer; margin: 0;
         }
 
-        input[type=range].vertical::-webkit-slider-runnable-track {
-            width: 100%; height: 4px; background: #222; border-radius: 2px; border: none;
-        }
-        input[type=range].vertical::-moz-range-track {
-            width: 100%; height: 4px; background: #222; border-radius: 2px; border: none;
-        }
+        input[type=range].vertical::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #222; border-radius: 2px; border: none; }
+        input[type=range].vertical::-moz-range-track { width: 100%; height: 4px; background: #222; border-radius: 2px; border: none; }
 
         input[type=range].vertical::-webkit-slider-thumb {
             -webkit-appearance: none;
@@ -96,9 +94,7 @@
         }
 
         input[type=range].vertical::-moz-range-thumb {
-            width: 8px; height: 16px;
-            background: #ccc; border: 1px solid #fff; border-radius: 2px;
-            border: none;
+            width: 8px; height: 16px; background: #ccc; border: 1px solid #fff; border-radius: 2px; border: none;
         }
 
         .param-label { font-size: 8px; color: #555; margin-top: 4px; text-align: center; white-space: nowrap; width: 100%; position: absolute; bottom: -12px;}
@@ -168,7 +164,7 @@
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v2.7 - SYNCED GRAVITY</div>
+    <div id="version-display">v2.8 - FAT UNISON</div>
 
     <button id="mode-btn">MODE: TOUCH</button>
     <button id="sensor-btn">SENSOR: OFF</button>
@@ -185,9 +181,20 @@
     </div>
 
     <div id="controls">
-        <div class="panel-section" id="panel-wave">
-            <div class="label">1. OSCILLATOR</div>
-            <canvas id="wave-canvas" width="224" height="80"></canvas>
+        <div class="panel-section" id="panel-wave" style="width: 280px;"> <div class="label">1. OSCILLATOR & UNISON</div>
+            <div style="display: flex; gap: 10px; width: 100%; justify-content: center; align-items: center;">
+                <canvas id="wave-canvas" width="160" height="80"></canvas>
+                <div style="display: flex; gap: 4px;">
+                    <div class="slider-group">
+                        <div class="slider-wrapper"><input type="range" class="vertical" id="uni-voices" min="1" max="5" step="1" value="3"></div>
+                        <span class="param-label">VOICE</span>
+                    </div>
+                    <div class="slider-group">
+                        <div class="slider-wrapper"><input type="range" class="vertical" id="uni-spread" min="0" max="100" step="1" value="30"></div>
+                        <span class="param-label">SPRD</span>
+                    </div>
+                </div>
+            </div>
             <div class="btn-group">
                 <button id="reset-btn">RESET</button>
                 <button id="auto-note-btn">NOTES: OFF</button>
@@ -291,8 +298,7 @@
         let meterCurrentVal = { x: 0, y: 0 };
         
         const balls = [];
-        // ★重要: 重力と速度を「正規化座標(0-1)」ベースに変更
-        const GRAVITY_NORMALIZED = 0.015; // 画面高さの1.5%ずつ加速
+        const GRAVITY_NORMALIZED = 0.015; 
         const BOUNCE_DAMPING = 0.7; 
 
         const cursorGeo = new THREE.RingGeometry(0.8, 1.0, 32); 
@@ -336,7 +342,8 @@
             const wCanvas = document.getElementById('wave-canvas');
             const eCanvas = document.getElementById('eq-canvas');
             const aCanvas = document.getElementById('adsr-canvas');
-            wCanvas.width = 224; wCanvas.height = 80;
+            // Canvas Size for new layout
+            wCanvas.width = 160; wCanvas.height = 80;
             eCanvas.width = 224; eCanvas.height = 90;
             aCanvas.width = 224; aCanvas.height = 60;
             drawWave(waveBuffer); 
@@ -368,22 +375,15 @@
             if(Math.abs(meterTargetVal.y - meterCurrentVal.y) > 0.001) fillY.style.height = (meterCurrentVal.y * 100) + "%";
 
             // Physics Update (Normalized)
-            const dt = 1.0; // Fixed time step assumption for simplicity in normalized space
-            
-            // Force Field Logic (Normalized)
+            const dt = 1.0; 
             let forceNormPos = null;
             if (physicsMode && isPointerDown && currentPointerPos) {
                  const cx = (currentPointerPos.x - window.innerWidth/2);
                  const cy = -(currentPointerPos.y - window.innerHeight/2) + playAreaOffsetY;
-                 
-                 // Pixel to Norm
                  const nx = (cx / playAreaSize) + 0.5;
                  const ny = (cy / playAreaSize) + 0.5;
-
                  forceNormPos = { x: nx, y: ny };
-                 
-                 // Render Force Mesh (Convert back to pixels for rendering)
-                 forceFieldMesh.position.set(cx, cy - playAreaOffsetY, 0); // Correct offset for rendering
+                 forceFieldMesh.position.set(cx, cy - playAreaOffsetY, 0); 
                  const pulse = 1.0 + Math.sin(Date.now() * 0.01) * 0.1;
                  forceFieldMesh.scale.set(playAreaSize*0.15*pulse, playAreaSize*0.15*pulse, 1);
                  forceFieldMesh.material.opacity = 0.4; 
@@ -393,16 +393,12 @@
 
             for (let i = balls.length - 1; i >= 0; i--) {
                 const b = balls[i];
-                
-                // 1. Apply Gravity (Normalized)
                 b.vy -= GRAVITY_NORMALIZED * dt;
                 
-                // 2. Apply Force Field (Normalized)
                 if (forceNormPos) {
                     const dx = b.x - forceNormPos.x;
                     const dy = b.y - forceNormPos.y;
                     const dist = Math.sqrt(dx*dx + dy*dy);
-                    // Force Radius = 0.2 (20% of screen)
                     if (dist < 0.2) {
                         const force = (0.2 - dist) * 0.08;
                         b.vx = (b.vx || 0) + (dx / dist) * force;
@@ -410,16 +406,13 @@
                     }
                 }
                 
-                // 3. Move Ball (Normalized)
                 b.x += (b.vx || 0);
-                b.vx = (b.vx || 0) * 0.95; // Drag
+                b.vx = (b.vx || 0) * 0.95; 
                 b.y += b.vy * dt;
 
-                // 4. Wall Collisions (Normalized bounds 0-1)
                 if (b.x > 1.0) { b.x = 1.0; b.vx *= -1; }
                 if (b.x < 0.0) { b.x = 0.0; b.vx *= -1; }
 
-                // 5. Floor Collision (Normalized 0)
                 if (b.y < 0.0) {
                     b.y = 0.0;
                     b.vy *= -BOUNCE_DAMPING;
@@ -427,15 +420,11 @@
                     if (Math.abs(b.vy) > 0.02) {
                         triggerNoteFromPhysics(b.x, Math.abs(b.vy) * 10.0);
                     } else if (Math.abs(b.vy) < 0.01 && b.y < 0.01) {
-                         // Stop spawning visuals
                          scene.remove(b.mesh);
                          balls.splice(i, 1);
                          continue;
                     }
                 }
-
-                // 6. Update Visual Mesh (Normalized -> Pixel)
-                // Center is (0,0), so 0.5 is subtracted
                 const pixelX = (b.x - 0.5) * playAreaSize;
                 const pixelY = (b.y - 0.5) * playAreaSize + playAreaOffsetY;
                 b.mesh.position.set(pixelX, pixelY, 0);
@@ -467,7 +456,7 @@
             if (['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX'].includes(targetParam)) panelId = 'panel-fx';
             else if (['VOL', 'FREQ'].includes(targetParam)) panelId = 'panel-mix';
             else if (['DECAY', 'RELEASE'].includes(targetParam)) panelId = 'panel-adsr';
-            else if (targetParam === 'WAVE') panelId = 'panel-wave';
+            else if (['WAVE', 'UNISON_SPREAD'].includes(targetParam)) panelId = 'panel-wave'; // WAVEパネルに追加
 
             if (panelId) {
                 const el = document.getElementById(panelId);
@@ -543,8 +532,18 @@
             eqMid.connect(eqHigh); 
             eqLow.connect(eqMid);
             panner.connect(eqLow);
+
+            // ★変更: FatOscillator (fattriangle) を使用
             synth = new Tone.PolySynth(Tone.Synth, {
-                maxPolyphony: 32, volume: -10, oscillator: { type: "triangle" }, envelope: localADSR
+                maxPolyphony: 32, 
+                volume: -10,
+                // type: 'fattriangle' は、基本波形がTriangleで、それをDetuneして重ねる
+                oscillator: { 
+                    type: "fattriangle",
+                    count: 3,  // 初期値
+                    spread: 30 // 初期値
+                }, 
+                envelope: localADSR
             }).connect(panner); 
 
             updateSynthWave(waveBuffer);
@@ -574,6 +573,10 @@
         const slDMix = document.getElementById('fx-delay-mix');
         const slDFb = document.getElementById('fx-delay-fb');
         const slPan = document.getElementById('fx-pan');
+        
+        // ★追加: Unison Sliders
+        const slVoices = document.getElementById('uni-voices');
+        const slSpread = document.getElementById('uni-spread');
 
         // --- Sensor & Value Logic ---
         let isSensorActive = false; let lastSensorSync = 0;
@@ -627,6 +630,29 @@
                 const speed = Math.floor(val * 100);
                 localAutoNote.speed = speed;
                 if(!skipUI) autoSpeed.value = speed;
+            }
+            // ★追加: Unisonパラメータの更新
+            else if (target === 'UNISON_VOICES') {
+                // val is raw number here (from emit) or 0-1?
+                // globalParams stores normalized 0-1 for easy lerp usually, 
+                // but slider emits raw value. Let's assume raw value for this special param.
+                // Wait, updateAllSystems usually takes normalized 0-1 if coming from sensor,
+                // but direct slider interaction might send raw.
+                // Let's unify: handle raw if > 1?
+                let voices = val;
+                // If val is small float (from ghost), map 0-1 to 1-5
+                if (val <= 1.0 && !Number.isInteger(val)) voices = Math.floor(val * 4) + 1;
+                
+                synth.set({ oscillator: { count: voices } });
+                if(!skipUI && slVoices) slVoices.value = voices;
+            }
+            else if (target === 'UNISON_SPREAD') {
+                let spread = val;
+                // If val is small float (from ghost), map 0-1 to 0-100
+                if (val <= 1.0) spread = val * 100;
+                
+                synth.set({ oscillator: { spread: spread } });
+                if(!skipUI && slSpread) slSpread.value = spread;
             }
         }
 
@@ -726,6 +752,10 @@
         slDMix.addEventListener('input', () => emitParam('DELAY_MIX', parseFloat(slDMix.value)));
         slDFb.addEventListener('input', () => emitParam('DELAY_FB', parseFloat(slDFb.value)));
         slPan.addEventListener('input', () => emitParam('PAN', parseFloat(slPan.value)));
+        
+        // ★追加: Unison Events
+        slVoices.addEventListener('input', () => emitParam('UNISON_VOICES', parseInt(slVoices.value)));
+        slSpread.addEventListener('input', () => emitParam('UNISON_SPREAD', parseFloat(slSpread.value)));
 
         let lastAutoSync = 0;
         autoNoteBtn.addEventListener('click', (e) => { e.stopPropagation(); localAutoNote.active = !localAutoNote.active; socket.emit('update_auto_note', localAutoNote); });
@@ -886,7 +916,6 @@
             const ballGeo = new THREE.SphereGeometry(playAreaSize * 0.02, 16, 16);
             const ballMat = new THREE.MeshBasicMaterial({ color: color, wireframe: true });
             const ballMesh = new THREE.Mesh(ballGeo, ballMat);
-            // x, y are normalized (0-1)
             const wX = (x - 0.5) * playAreaSize; 
             const wY = (y - 0.5) * playAreaSize + playAreaOffsetY;
             ballMesh.position.set(wX, wY, 0); scene.add(ballMesh);
@@ -908,17 +937,6 @@
             const centerX = w / 2; const centerY = (h / 2) - playAreaOffsetY;
             const normX = ((cX - centerX) / playAreaSize) + 0.5; const normY = ((cY - centerY) / playAreaSize) + 0.5;
             
-            // Normalized conversion for Physics Mode (0 = Bottom, 1 = Top relative to playArea)
-            // normY from handleInput is 0=Top(Screen), 1=Bottom(Screen) inverted?
-            // Actually in Three.js coord: Y is up.
-            // Let's rely on normX/normY as 0..1 from Top Left usually in DOM
-            // My handleInput logic: normY = ((cY - centerY) / playAreaSize) + 0.5
-            // This normY is 0 at top, 1 at bottom?
-            // Let's re-verify:
-            // cY small (top) -> normY small. cY large (bottom) -> normY large.
-            // So 0 is top, 1 is bottom.
-            // BUT physics needs 0 = floor.
-            // So we need to invert normY for physics spawn.
             const physY = 1.0 - normY;
 
             if (physicsMode) {
@@ -949,7 +967,6 @@
             const color = 0xffffff; 
             const opacity = isAuto ? 0.3 : 0.8;
             
-            // PC Ring Visibility Fix
             const innerR = isPC ? 0.95 : 0.99; 
             const mesh = new THREE.Mesh(new THREE.RingGeometry(innerR, 1.0, 64), new THREE.MeshBasicMaterial({ color: color, transparent: true, side: THREE.DoubleSide, opacity: opacity }));
             mesh.position.copy(pos); scene.add(mesh);
