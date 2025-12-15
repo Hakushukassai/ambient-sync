@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Synth Master Sync v2.8 - FAT UNISON</title>
+    <title>Synth Master Sync v2.9 - Value Display</title>
     <style>
         /* --- Base Aesthetic --- */
         body { margin: 0; overflow: hidden; background: #050505; touch-action: none; color: #ccc; font-family: 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.05em; }
@@ -55,23 +55,30 @@
         #adsr-canvas { height: 60px; }
 
         .eq-values { font-size: 9px; color: #444; width: 100%; text-align: center; margin-top: 5px; pointer-events: none; }
-        .mixer-container { display: flex; gap: 20px; height: 100%; align-items: center; justify-content: center; width: 100%; }
+        
+        /* Mixer Container Alignment Fix */
+        .mixer-container { 
+            display: flex; gap: 20px; 
+            /* height: 100%; 削除してFlex制御へ */
+            height: auto; flex-grow: 1;
+            align-items: center; justify-content: center; width: 100%; 
+            margin-top: -10px; /* 全体を少し上に持ち上げる */
+        }
         #adsr-container { display: flex; flex-direction: column; align-items: center; width: 100%; }
         
         /* Sliders Layout */
         .sliders { display: flex; gap: 2px; width: 100%; justify-content: space-between; margin-top: 10px; height: 100px; }
         
-        /* ★修正: justify-content: center でフェーダーを垂直方向中央に */
         .slider-group { 
             display: flex; flex-direction: column; align-items: center; flex: 1; 
-            height: 100%; justify-content: center; /* Center Vertically */
-            position: relative;
+            height: auto; justify-content: center; 
+            position: relative; min-height: 110px;
         }
         
-        /* Rotated Horizontal Sliders for Perfect Center */
         .slider-wrapper {
             width: 30px; height: 80px;
             display: flex; align-items: center; justify-content: center;
+            margin-bottom: 5px;
         }
 
         input[type=range].vertical {
@@ -93,11 +100,17 @@
             box-shadow: 0 0 5px rgba(255,255,255,0.2);
         }
 
-        input[type=range].vertical::-moz-range-thumb {
-            width: 8px; height: 16px; background: #ccc; border: 1px solid #fff; border-radius: 2px; border: none;
+        .param-label { 
+            font-size: 8px; color: #555; margin-top: 2px; text-align: center; 
+            white-space: nowrap; width: 100%; position: absolute; bottom: 0;
         }
-
-        .param-label { font-size: 8px; color: #555; margin-top: 4px; text-align: center; white-space: nowrap; width: 100%; position: absolute; bottom: -12px;}
+        
+        /* ★新機能: 数値表示スタイル */
+        .val-display {
+            font-size: 9px; color: #00d2ff; text-align: center; width: 100%;
+            position: absolute; top: 0; font-family: 'Courier New', monospace;
+            text-shadow: 0 0 2px rgba(0, 210, 255, 0.3);
+        }
 
         .btn-group { display: flex; gap: 5px; margin-top: 15px; width: 100%; }
         button {
@@ -164,7 +177,7 @@
     </div>
 
     <div id="scale-display">SCALE: LOADING...</div>
-    <div id="version-display">v2.8 - FAT UNISON</div>
+    <div id="version-display">v2.9 - VAL DISPLAY</div>
 
     <button id="mode-btn">MODE: TOUCH</button>
     <button id="sensor-btn">SENSOR: OFF</button>
@@ -186,10 +199,12 @@
                 <canvas id="wave-canvas" width="160" height="80"></canvas>
                 <div style="display: flex; gap: 4px;">
                     <div class="slider-group">
+                        <div class="val-display" id="disp-uni-voices">3</div>
                         <div class="slider-wrapper"><input type="range" class="vertical" id="uni-voices" min="1" max="5" step="1" value="3"></div>
                         <span class="param-label">VOICE</span>
                     </div>
                     <div class="slider-group">
+                        <div class="val-display" id="disp-uni-spread">30</div>
                         <div class="slider-wrapper"><input type="range" class="vertical" id="uni-spread" min="0" max="100" step="1" value="30"></div>
                         <span class="param-label">SPRD</span>
                     </div>
@@ -214,10 +229,12 @@
             <div class="label">3. MIXER</div>
             <div class="mixer-container">
                 <div class="slider-group">
+                    <div class="val-display" id="disp-vol-synth">-6dB</div>
                     <div class="slider-wrapper"><input type="range" class="vertical" id="vol-synth" min="-60" max="0" step="1" value="-6"></div>
                     <span class="param-label">VOL</span>
                 </div>
                 <div class="slider-group">
+                    <div class="val-display" id="disp-auto-speed">30%</div>
                     <div class="slider-wrapper"><input type="range" class="vertical" id="auto-speed" min="0" max="100" step="1" value="30"></div>
                     <span class="param-label">SPEED</span>
                 </div>
@@ -229,10 +246,26 @@
             <div id="adsr-container">
                 <canvas id="adsr-canvas" width="224" height="60"></canvas>
                 <div class="sliders">
-                    <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="adsr-a" min="0.01" max="2.0" step="0.01" value="0.1"></div><span class="param-label">A</span></div>
-                    <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="adsr-d" min="0.1" max="2.0" step="0.01" value="0.2"></div><span class="param-label">D</span></div>
-                    <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="adsr-s" min="0" max="1.0" step="0.01" value="0.5"></div><span class="param-label">S</span></div>
-                    <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="adsr-r" min="0.1" max="5.0" step="0.1" value="1.5"></div><span class="param-label">R</span></div>
+                    <div class="slider-group">
+                        <div class="val-display" id="disp-adsr-a">0.1s</div>
+                        <div class="slider-wrapper"><input type="range" class="vertical" id="adsr-a" min="0.01" max="2.0" step="0.01" value="0.1"></div>
+                        <span class="param-label">A</span>
+                    </div>
+                    <div class="slider-group">
+                        <div class="val-display" id="disp-adsr-d">0.2s</div>
+                        <div class="slider-wrapper"><input type="range" class="vertical" id="adsr-d" min="0.1" max="2.0" step="0.01" value="0.2"></div>
+                        <span class="param-label">D</span>
+                    </div>
+                    <div class="slider-group">
+                        <div class="val-display" id="disp-adsr-s">50%</div>
+                        <div class="slider-wrapper"><input type="range" class="vertical" id="adsr-s" min="0" max="1.0" step="0.01" value="0.5"></div>
+                        <span class="param-label">S</span>
+                    </div>
+                    <div class="slider-group">
+                        <div class="val-display" id="disp-adsr-r">1.5s</div>
+                        <div class="slider-wrapper"><input type="range" class="vertical" id="adsr-r" min="0.1" max="5.0" step="0.1" value="1.5"></div>
+                        <span class="param-label">R</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -240,11 +273,31 @@
         <div class="panel-section" id="panel-fx">
             <div class="label">5. EFFECTS</div>
             <div class="sliders">
-                <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="fx-filter" min="0" max="1" step="0.01" value="0.5"></div><span class="param-label">FILT</span></div>
-                <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="fx-reverb" min="0" max="1" step="0.01" value="0.0"></div><span class="param-label">REV</span></div>
-                <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="fx-delay-mix" min="0" max="1" step="0.01" value="0.0"></div><span class="param-label">D.MIX</span></div>
-                <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="fx-delay-fb" min="0" max="1" step="0.01" value="0.3"></div><span class="param-label">D.FB</span></div>
-                <div class="slider-group"><div class="slider-wrapper"><input type="range" class="vertical" id="fx-pan" min="0" max="1" step="0.01" value="0.5"></div><span class="param-label">PAN</span></div>
+                <div class="slider-group">
+                    <div class="val-display" id="disp-fx-filter">50%</div>
+                    <div class="slider-wrapper"><input type="range" class="vertical" id="fx-filter" min="0" max="1" step="0.01" value="0.5"></div>
+                    <span class="param-label">FILT</span>
+                </div>
+                <div class="slider-group">
+                    <div class="val-display" id="disp-fx-reverb">0%</div>
+                    <div class="slider-wrapper"><input type="range" class="vertical" id="fx-reverb" min="0" max="1" step="0.01" value="0.0"></div>
+                    <span class="param-label">REV</span>
+                </div>
+                <div class="slider-group">
+                    <div class="val-display" id="disp-fx-delay-mix">0%</div>
+                    <div class="slider-wrapper"><input type="range" class="vertical" id="fx-delay-mix" min="0" max="1" step="0.01" value="0.0"></div>
+                    <span class="param-label">D.MIX</span>
+                </div>
+                <div class="slider-group">
+                    <div class="val-display" id="disp-fx-delay-fb">30%</div>
+                    <div class="slider-wrapper"><input type="range" class="vertical" id="fx-delay-fb" min="0" max="1" step="0.01" value="0.3"></div>
+                    <span class="param-label">D.FB</span>
+                </div>
+                <div class="slider-group">
+                    <div class="val-display" id="disp-fx-pan">C</div>
+                    <div class="slider-wrapper"><input type="range" class="vertical" id="fx-pan" min="0" max="1" step="0.01" value="0.5"></div>
+                    <span class="param-label">PAN</span>
+                </div>
             </div>
         </div>
 
@@ -456,7 +509,7 @@
             if (['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX'].includes(targetParam)) panelId = 'panel-fx';
             else if (['VOL', 'FREQ'].includes(targetParam)) panelId = 'panel-mix';
             else if (['DECAY', 'RELEASE'].includes(targetParam)) panelId = 'panel-adsr';
-            else if (['WAVE', 'UNISON_SPREAD'].includes(targetParam)) panelId = 'panel-wave'; // WAVEパネルに追加
+            else if (['WAVE', 'UNISON_SPREAD'].includes(targetParam)) panelId = 'panel-wave'; 
 
             if (panelId) {
                 const el = document.getElementById(panelId);
@@ -533,15 +586,15 @@
             eqLow.connect(eqMid);
             panner.connect(eqLow);
 
-            // ★変更: FatOscillator (fattriangle) を使用
+            // Unison Oscillator Setup (Additional Feature)
+            // Existing function is preserved by using default spread/count where appropriate
             synth = new Tone.PolySynth(Tone.Synth, {
                 maxPolyphony: 32, 
                 volume: -10,
-                // type: 'fattriangle' は、基本波形がTriangleで、それをDetuneして重ねる
                 oscillator: { 
-                    type: "fattriangle",
-                    count: 3,  // 初期値
-                    spread: 30 // 初期値
+                    type: "fattriangle", // Enables Spread
+                    count: 3, 
+                    spread: 30 
                 }, 
                 envelope: localADSR
             }).connect(panner); 
@@ -567,16 +620,21 @@
         const waveCanvas=document.getElementById('wave-canvas'), waveCtx=waveCanvas.getContext('2d'), resetBtn=document.getElementById('reset-btn');
         const adsrC=document.getElementById('adsr-canvas'), adsrCtx=adsrC.getContext('2d');
 
-        // New Effects Sliders
         const slFilt = document.getElementById('fx-filter');
         const slRev = document.getElementById('fx-reverb');
         const slDMix = document.getElementById('fx-delay-mix');
         const slDFb = document.getElementById('fx-delay-fb');
         const slPan = document.getElementById('fx-pan');
         
-        // ★追加: Unison Sliders
+        // Unison Sliders
         const slVoices = document.getElementById('uni-voices');
         const slSpread = document.getElementById('uni-spread');
+
+        // --- Display Value Helpers ---
+        function updateValDisplay(id, val, suffix='') {
+            const el = document.getElementById('disp-' + id);
+            if(el) el.textContent = val + suffix;
+        }
 
         // --- Sensor & Value Logic ---
         let isSensorActive = false; let lastSensorSync = 0;
@@ -595,64 +653,66 @@
                 const freq = 100 * Math.pow(80, val); 
                 if(globalFilter) globalFilter.frequency.rampTo(freq, 0.1); 
                 if(!skipUI && slFilt) slFilt.value = val;
+                updateValDisplay('fx-filter', Math.round(val * 100), '%');
             } 
             else if (target === 'PAN') { 
                 const panVal = (val * 2) - 1; 
                 if(panner) panner.pan.rampTo(panVal, 0.1); 
                 if(!skipUI && slPan) slPan.value = val;
+                const txt = panVal === 0 ? "C" : (panVal < 0 ? "L"+Math.abs(Math.round(panVal*50)) : "R"+Math.round(panVal*50));
+                updateValDisplay('fx-pan', txt);
             } 
             else if (target === 'VOL') { 
                 const vol = (val * 60) - 60; 
                 synth.volume.rampTo(vol, 0.1); 
                 if(!skipUI) volSynth.value = vol; 
+                updateValDisplay('vol-synth', Math.round(vol), 'dB');
             } 
             else if (target === 'REVERB') { 
                 if(reverb) reverb.wet.rampTo(val, 0.1); 
                 if(!skipUI && slRev) slRev.value = val;
+                updateValDisplay('fx-reverb', Math.round(val * 100), '%');
             } 
             else if (target === 'DELAY_FB') { 
                 if(pingPong) pingPong.feedback.rampTo(val * 0.9, 0.1); 
                 if(!skipUI && slDFb) slDFb.value = val;
+                updateValDisplay('fx-delay-fb', Math.round(val * 100), '%');
             }
             else if (target === 'DELAY_MIX') { 
                 if(pingPong) pingPong.wet.rampTo(val, 0.1); 
                 if(!skipUI && slDMix) slDMix.value = val;
+                updateValDisplay('fx-delay-mix', Math.round(val * 100), '%');
             }
             else if (target === 'DECAY') { 
                 const d = 0.1 + (val * 1.9); synth.set({ envelope: { decay: d } }); 
                 if(!skipUI) { slD.value = d; drawADSRVisual(); }
+                updateValDisplay('adsr-d', d.toFixed(2), 's');
             } 
             else if (target === 'RELEASE') { 
                 const r = 0.1 + (val * 4.9); synth.set({ envelope: { release: r } }); 
                 if(!skipUI) { slR.value = r; drawADSRVisual(); }
+                updateValDisplay('adsr-r', r.toFixed(2), 's');
             }
             else if (target === 'FREQ') {
                 const speed = Math.floor(val * 100);
                 localAutoNote.speed = speed;
                 if(!skipUI) autoSpeed.value = speed;
+                updateValDisplay('auto-speed', speed, '%');
             }
-            // ★追加: Unisonパラメータの更新
+            // ★追加機能: UNISON制御
             else if (target === 'UNISON_VOICES') {
-                // val is raw number here (from emit) or 0-1?
-                // globalParams stores normalized 0-1 for easy lerp usually, 
-                // but slider emits raw value. Let's assume raw value for this special param.
-                // Wait, updateAllSystems usually takes normalized 0-1 if coming from sensor,
-                // but direct slider interaction might send raw.
-                // Let's unify: handle raw if > 1?
                 let voices = val;
-                // If val is small float (from ghost), map 0-1 to 1-5
-                if (val <= 1.0 && !Number.isInteger(val)) voices = Math.floor(val * 4) + 1;
-                
+                if (val <= 1.0 && !Number.isInteger(val)) voices = Math.floor(val * 4) + 1; // Normalize対策
                 synth.set({ oscillator: { count: voices } });
                 if(!skipUI && slVoices) slVoices.value = voices;
+                updateValDisplay('uni-voices', voices);
             }
             else if (target === 'UNISON_SPREAD') {
                 let spread = val;
-                // If val is small float (from ghost), map 0-1 to 0-100
-                if (val <= 1.0) spread = val * 100;
-                
+                if (val <= 1.0) spread = val * 100; // Normalize対策
                 synth.set({ oscillator: { spread: spread } });
                 if(!skipUI && slSpread) slSpread.value = spread;
+                updateValDisplay('uni-spread', Math.round(spread));
             }
         }
 
@@ -713,7 +773,11 @@
             const normD = (d.decay - 0.1) / 1.9; const normR = (d.release - 0.1) / 4.9;
             updateAllSystems('DECAY', Math.max(0, Math.min(1, normD)));
             updateAllSystems('RELEASE', Math.max(0, Math.min(1, normR)));
-            slA.value=d.attack; slS.value=d.sustain; drawADSRVisual();
+            
+            slA.value=d.attack; slS.value=d.sustain; 
+            updateValDisplay('adsr-a', d.attack.toFixed(2), 's');
+            updateValDisplay('adsr-s', Math.round(d.sustain*100), '%');
+            drawADSRVisual();
             if(synth) synth.set({envelope:d});
         });
         socket.on('sync_mixer', d => {
@@ -733,6 +797,7 @@
             if(localAutoNote.active) { autoNoteBtn.textContent = "NOTES: ON"; autoNoteBtn.classList.add("active"); } 
             else { autoNoteBtn.textContent = "NOTES: OFF"; autoNoteBtn.classList.remove("active"); }
             autoSpeed.value = localAutoNote.speed;
+            updateValDisplay('auto-speed', localAutoNote.speed, '%');
         });
         socket.on('sync_auto_drift', (data) => {
             localAutoDrift = data;
@@ -753,14 +818,18 @@
         slDFb.addEventListener('input', () => emitParam('DELAY_FB', parseFloat(slDFb.value)));
         slPan.addEventListener('input', () => emitParam('PAN', parseFloat(slPan.value)));
         
-        // ★追加: Unison Events
+        // Unison Events
         slVoices.addEventListener('input', () => emitParam('UNISON_VOICES', parseInt(slVoices.value)));
         slSpread.addEventListener('input', () => emitParam('UNISON_SPREAD', parseFloat(slSpread.value)));
 
         let lastAutoSync = 0;
         autoNoteBtn.addEventListener('click', (e) => { e.stopPropagation(); localAutoNote.active = !localAutoNote.active; socket.emit('update_auto_note', localAutoNote); });
         autoDriftBtn.addEventListener('click', (e) => { e.stopPropagation(); localAutoDrift.active = !localAutoDrift.active; socket.emit('update_auto_drift', localAutoDrift); });
-        autoSpeed.addEventListener('input', () => { localAutoNote.speed = parseInt(autoSpeed.value); if(Date.now() - lastAutoSync > 100) { socket.emit('update_auto_note', localAutoNote); lastAutoSync = Date.now(); } });
+        autoSpeed.addEventListener('input', () => { 
+            localAutoNote.speed = parseInt(autoSpeed.value); 
+            updateValDisplay('auto-speed', localAutoNote.speed, '%');
+            if(Date.now() - lastAutoSync > 100) { socket.emit('update_auto_note', localAutoNote); lastAutoSync = Date.now(); } 
+        });
         let lastMixerSync = 0;
         volSynth.addEventListener('input',()=>{ 
             const val = parseFloat(volSynth.value); const normVol = (val + 60) / 60;
@@ -772,6 +841,10 @@
             localADSR={attack:parseFloat(slA.value),decay:parseFloat(slD.value),sustain:parseFloat(slS.value),release:parseFloat(slR.value)};
             const normD = (localADSR.decay - 0.1) / 1.9; const normR = (localADSR.release - 0.1) / 4.9;
             updateAllSystems('DECAY', normD, true); updateAllSystems('RELEASE', normR, true);
+            
+            updateValDisplay('adsr-a', localADSR.attack.toFixed(2), 's');
+            updateValDisplay('adsr-s', Math.round(localADSR.sustain*100), '%');
+            
             drawADSRVisual();
             if(Date.now() - lastAdsrSync > 30) { socket.emit('update_adsr',localADSR); lastAdsrSync = Date.now(); }
         };
