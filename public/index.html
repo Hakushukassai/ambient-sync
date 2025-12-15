@@ -5,8 +5,164 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Synth Master Sync v3.1 - Lifespan Control</title>
     <style>
-        /* ... (前回のCSSそのまま) ... */
-        /* 変更なしですが、スライダーが増えるため .mixer-container の幅調整が必要な場合は自動でスクロールされます */
+        /* --- Base Aesthetic --- */
+        body { margin: 0; overflow: hidden; background: #050505; touch-action: none; color: #ccc; font-family: 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.05em; }
+        
+        /* Ghost Pulse */
+        @keyframes pulse-border {
+            0% { border-color: #333; box-shadow: 0 0 0 rgba(0,0,0,0); }
+            50% { border-color: #777; box-shadow: 0 0 10px rgba(255,255,255,0.05); }
+            100% { border-color: #333; box-shadow: 0 0 0 rgba(0,0,0,0); }
+        }
+        .ghost-pulse { animation: pulse-border 0.3s ease-out; }
+
+        /* --- Controls Container --- */
+        #controls {
+            position: fixed; bottom: 0; left: 0; width: 100%; height: 300px;
+            background: rgba(10, 10, 10, 0.95);
+            border-top: 1px solid #222;
+            display: flex; flex-direction: row; justify-content: flex-start; align-items: center;
+            padding-bottom: 20px; z-index: 50; gap: 15px; box-sizing: border-box;
+            overflow-x: auto; touch-action: pan-x; -webkit-overflow-scrolling: touch;
+        }
+        #controls::-webkit-scrollbar { display: none; }
+        
+        /* --- PC View Enhancements --- */
+        @media (min-width: 1024px) { 
+            body { background: #080808; }
+            #controls { justify-content: center; overflow-x: visible; background: #111; height: 320px; } 
+            .panel-section { border: 1px solid #444 !important; background: #161616 !important; }
+            canvas { border: 1px solid #555 !important; background: #000 !important; }
+            .label { color: #888 !important; font-weight: bold; }
+            .param-label { color: #aaa !important; }
+            button { border-color: #555 !important; color: #aaa !important; }
+        }
+
+        .panel-section {
+            display: flex; flex-direction: column; align-items: center;
+            background: #0a0a0a; border: 1px solid #222; border-radius: 4px;
+            padding: 12px; width: 250px; height: 230px;
+            justify-content: flex-start; 
+            flex-shrink: 0; position: relative; scroll-snap-align: center;
+            transition: border-color 0.2s;
+        }
+        
+        .label { font-size: 10px; color: #555; margin-bottom: 10px; letter-spacing: 1px; width: 100%; text-align: left; }
+
+        canvas { background: #000; border: 1px solid #222; border-radius: 2px; touch-action: none; }
+        #wave-canvas { height: 80px; cursor: crosshair; }
+        #eq-canvas { height: 90px; cursor: default; }
+        #adsr-canvas { height: 60px; }
+
+        .eq-values { font-size: 9px; color: #444; width: 100%; text-align: center; margin-top: 5px; pointer-events: none; }
+        
+        /* Mixer Container Alignment Fix */
+        .mixer-container { 
+            display: flex; gap: 20px; 
+            height: auto; flex-grow: 1;
+            align-items: center; justify-content: center; width: 100%; 
+            margin-top: -10px; 
+        }
+        #adsr-container { display: flex; flex-direction: column; align-items: center; width: 100%; }
+        
+        /* Sliders Layout */
+        .sliders { display: flex; gap: 2px; width: 100%; justify-content: space-between; margin-top: 10px; height: 100px; }
+        
+        .slider-group { 
+            display: flex; flex-direction: column; align-items: center; flex: 1; 
+            height: auto; justify-content: center; 
+            position: relative; min-height: 110px;
+        }
+        
+        .slider-wrapper {
+            width: 30px; height: 80px;
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 5px;
+        }
+
+        input[type=range].vertical {
+            -webkit-appearance: none; appearance: none;
+            width: 80px; height: 30px;
+            background: transparent;
+            transform: rotate(-90deg);
+            cursor: pointer; margin: 0;
+        }
+
+        input[type=range].vertical::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #222; border-radius: 2px; border: none; }
+        input[type=range].vertical::-moz-range-track { width: 100%; height: 4px; background: #222; border-radius: 2px; border: none; }
+
+        input[type=range].vertical::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 8px; height: 16px;
+            background: #ccc; border: 1px solid #fff; border-radius: 2px;
+            margin-top: -6px; 
+            box-shadow: 0 0 5px rgba(255,255,255,0.2);
+        }
+
+        .param-label { 
+            font-size: 8px; color: #555; margin-top: 2px; text-align: center; 
+            white-space: nowrap; width: 100%; position: absolute; bottom: 0;
+        }
+        
+        /* Value Display Style */
+        .val-display {
+            font-size: 9px; color: #00d2ff; text-align: center; width: 100%;
+            position: absolute; top: 0; font-family: 'Courier New', monospace;
+            text-shadow: 0 0 2px rgba(0, 210, 255, 0.3);
+        }
+
+        .btn-group { display: flex; gap: 5px; margin-top: 15px; width: 100%; }
+        button {
+            background: #111; border: 1px solid #333;
+            color: #666; font-size: 9px; padding: 6px 0; flex: 1; cursor: pointer; border-radius: 2px;
+            font-family: inherit; transition: all 0.2s;
+        }
+        button:hover { background: #222; color: #fff; }
+        button.active { background: #eee; color: #000; border-color: #fff; font-weight: bold; }
+        button.ghost-active { background: #220033; color: #eebbff; border-color: #aa44ff; }
+
+        .scale-grid { 
+            display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 100%; margin-top: 5px; height: 100%; 
+            overflow-y: auto; align-content: start; 
+        }
+        .scale-btn { 
+            padding: 8px 6px; font-size: 9px; text-align: left; width: 100%; 
+            border: 1px solid #222; background: #111; color: #666;
+        }
+        .scale-btn.active { border-color: #888; background: #333; color: #fff; }
+
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); z-index: 999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            cursor: pointer; letter-spacing: 4px; color: #fff; font-weight: 300;
+        }
+        #overlay span { margin-top: 20px; font-size: 10px; color: #555; letter-spacing: 2px; }
+
+        #sensor-btn, #mode-btn {
+            position: fixed; top: 20px; z-index: 100;
+            background: rgba(0,0,0,0.5); border: 1px solid #444; color: #888;
+            padding: 8px 16px; font-size: 9px; border-radius: 100px; cursor: pointer;
+            backdrop-filter: blur(5px); transition: all 0.3s;
+        }
+        #sensor-btn { right: 20px; }
+        #mode-btn { left: 20px; }
+        #sensor-btn.active { color: #fff; border-color: #fff; background: rgba(255,255,255,0.2); }
+        #mode-btn.physics { color: #fff; border-color: #fff; background: rgba(255,255,255,0.2); }
+
+        #scale-display { position: fixed; bottom: 20px; right: 20px; font-size: 10px; color: #444; z-index: 9999; pointer-events: none; }
+        #version-display { position: fixed; bottom: 5px; right: 20px; font-size: 9px; color: #222; z-index: 9999; pointer-events: none; }
+
+        /* Sensor Meters */
+        #sensor-panel { position: fixed; top: 70px; right: 20px; z-index: 90; display: flex; gap: 8px; }
+        .sensor-group { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .sensor-meter {
+            width: 4px; height: 60px; background: #111;
+            border-radius: 2px; position: relative; overflow: hidden;
+            display: flex; flex-direction: column-reverse; border: 1px solid #222;
+        }
+        .sensor-fill { width: 100%; height: 0%; background: #666; transition: height 0.1s; }
+        .target-btn { font-size: 8px; color: #666; background: transparent; border: none; padding: 2px; width: 40px; text-align: center; cursor: pointer; }
     </style>
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
@@ -159,7 +315,8 @@
             </div>
         </div>
 
-        <div class="panel-section" id="panel-physics" style="width: 300px;"> <div class="label">7. PHYSICS & TIME</div>
+        <div class="panel-section" id="panel-physics" style="width: 300px;">
+            <div class="label">7. PHYSICS & TIME</div>
             <div class="mixer-container">
                 <div class="slider-group">
                     <div class="val-display" id="disp-phys-grav-y">Low</div>
@@ -181,7 +338,6 @@
     </div>
 
     <script>
-        // ... (冒頭の変数はそのまま) ...
         const socket = io();
         let isStarted = false;
         let physicsMode = false; 
@@ -189,13 +345,14 @@
         let synth, limiter, chorus, reverb, pingPong, fft, panner, compressor; 
         let eqLow, eqMid, eqHigh, globalFilter; 
 
+        // --- Layout & Device Detection ---
         let playAreaSize = 0;
         let playAreaMesh;
         let playAreaOffsetY = 0; 
         let prevNotePos = null;
         const isPC = window.innerWidth >= 1024; 
 
-        // ... (Three.js setup そのまま) ...
+        // --- Visuals & Physics ---
         const scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(isPC ? 0x080808 : 0x050505, 0.05);
 
@@ -214,11 +371,9 @@
         let meterCurrentVal = { x: 0, y: 0 };
         
         const balls = [];
-        // ★Update: lifespanMsを追加 (初期値5000ms)
         let localPhysics = { x: 0, y: 0.005, lifespanMs: 5000 }; 
         const BOUNCE_DAMPING = 0.7; 
-        // ★追加: 連続発音防止のためのクールダウン時間 (ms)
-        const HIT_COOLDOWN = 100; 
+        const HIT_COOLDOWN = 100; // ms
 
         const cursorGeo = new THREE.RingGeometry(0.8, 1.0, 32); 
         const cursorMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: isPC ? 0.6 : 0.3 });
@@ -230,7 +385,6 @@
         const forceFieldMesh = new THREE.Mesh(forceFieldGeo, forceFieldMat);
         scene.add(forceFieldMesh);
 
-        // ... (updateLayout, resizeCanvases 等は変更なし) ...
         function updateLayout() {
             const w = window.innerWidth; const h = window.innerHeight;
             const controlsEl = document.getElementById('controls');
@@ -319,7 +473,7 @@
             for (let i = balls.length - 1; i >= 0; i--) {
                 const b = balls[i];
                 
-                // ★追加: 寿命判定
+                // Lifespan check
                 if (nowTime - b.spawnTime > localPhysics.lifespanMs) {
                     scene.remove(b.mesh);
                     balls.splice(i, 1);
@@ -347,8 +501,7 @@
                 b.vx = (b.vx || 0) * Math.pow(0.99, delta);
                 b.y += b.vy * delta;
 
-                // ★Update: Sound Latency Fix & Debounce
-                // checkHitAndPlay(ball, nowTime) helper
+                // Sound Trigger Helper with Debounce
                 const tryPlay = (ball, velocity) => {
                     if (nowTime - ball.lastHit > HIT_COOLDOWN) {
                         triggerNoteFromPhysics(ball.x, velocity);
@@ -380,10 +533,10 @@
                 const pixelY = (b.y - 0.5) * playAreaSize + playAreaOffsetY;
                 b.mesh.position.set(pixelX, pixelY, 0);
                 
-                // Fade out near end of life
+                // Fade out
                 const lifeProgress = (nowTime - b.spawnTime) / localPhysics.lifespanMs;
                 if(lifeProgress > 0.8) {
-                    b.mesh.material.opacity = 1.0 - ((lifeProgress - 0.8) * 5.0); // 0.8~1.0でフェードアウト
+                    b.mesh.material.opacity = 1.0 - ((lifeProgress - 0.8) * 5.0);
                     b.mesh.material.transparent = true;
                 }
             }
@@ -409,14 +562,13 @@
         }
         animate();
 
-        // ... (triggerGlitch, ADSR, Mixer, EQ, Scale, initAudio 等は変更なし) ...
         function triggerGlitch(targetParam) {
             let panelId = null;
             if (['FILTER', 'PAN', 'REVERB', 'DELAY_FB', 'DELAY_MIX'].includes(targetParam)) panelId = 'panel-fx';
             else if (['VOL', 'FREQ'].includes(targetParam)) panelId = 'panel-mix';
             else if (['DECAY', 'RELEASE'].includes(targetParam)) panelId = 'panel-adsr';
             else if (['WAVE', 'UNISON_SPREAD'].includes(targetParam)) panelId = 'panel-wave'; 
-            else if (['GRAVITY_X', 'GRAVITY_Y', 'PHYSICS_LIFESPAN'].includes(targetParam)) panelId = 'panel-physics'; // 追加
+            else if (['GRAVITY_X', 'GRAVITY_Y', 'PHYSICS_LIFESPAN'].includes(targetParam)) panelId = 'panel-physics';
 
             if (panelId) {
                 const el = document.getElementById(panelId);
@@ -436,6 +588,7 @@
         let localAutoDrift = { active: false };
         const WAVE_SIZE=128; 
         let waveBuffer=new Array(WAVE_SIZE).fill(0).map((_,i)=>Math.sin((i/WAVE_SIZE)*Math.PI*2));
+
         const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
         const SCALE_DEFINITIONS = {
             "MYSTERIOUS":       [0, 2, 3, 6, 7, 8, 11],
@@ -467,7 +620,7 @@
         async function initAudio() {
             if (isStarted) return;
             await Tone.start();
-            // ... (Audio Node Setup は変更なし) ...
+            
             fft = new Tone.Analyser("fft", 256); fft.smoothing = 0.85;
             limiter = new Tone.Limiter(-1).connect(fft); fft.toDestination(); 
             compressor = new Tone.Compressor({ threshold: -20, ratio: 4, attack: 0.01, release: 0.1 });
@@ -508,7 +661,7 @@
         }
         document.getElementById('overlay').addEventListener('click', initAudio);
 
-        // ... (UI Element References) ...
+        // --- UI Element References ---
         const slA=document.getElementById('adsr-a'), slD=document.getElementById('adsr-d'), slS=document.getElementById('adsr-s'), slR=document.getElementById('adsr-r');
         const volSynth=document.getElementById('vol-synth');
         const autoNoteBtn = document.getElementById('auto-note-btn');
@@ -527,11 +680,12 @@
         const slDMix = document.getElementById('fx-delay-mix');
         const slDFb = document.getElementById('fx-delay-fb');
         const slPan = document.getElementById('fx-pan');
+        
         const slVoices = document.getElementById('uni-voices');
         const slSpread = document.getElementById('uni-spread');
+        
         const slGravY = document.getElementById('phys-grav-y');
         const slGravX = document.getElementById('phys-grav-x');
-        // ★追加: Lifespan Slider
         const slLife = document.getElementById('phys-life');
 
         function updateValDisplay(id, val, suffix='') {
@@ -558,7 +712,6 @@
                 if(!skipUI && slFilt) slFilt.value = val;
                 updateValDisplay('fx-filter', Math.round(val * 100), '%');
             } 
-            // ... (他のパラメータは変更なし) ...
             else if (target === 'PAN') { 
                 const panVal = (val * 2) - 1; 
                 if(panner) panner.pan.rampTo(panVal, 0.1); 
@@ -629,10 +782,7 @@
                 const offset = Math.round((val - 0.5) * 100);
                 updateValDisplay('phys-grav-x', offset);
             }
-            // ★追加: LIFESPAN Update Logic
             else if (target === 'PHYSICS_LIFESPAN') {
-                // val is 0.0 to 1.0
-                // map to 100ms to 10000ms
                 const ms = 100 + (val * 9900);
                 localPhysics.lifespanMs = ms;
                 if(!skipUI && slLife) slLife.value = val;
@@ -750,7 +900,6 @@
         
         slGravY.addEventListener('input', () => emitParam('GRAVITY_Y', parseFloat(slGravY.value)));
         slGravX.addEventListener('input', () => emitParam('GRAVITY_X', parseFloat(slGravX.value)));
-        // ★追加: Lifespan Slider Event
         slLife.addEventListener('input', () => emitParam('PHYSICS_LIFESPAN', parseFloat(slLife.value)));
 
         let lastAutoSync = 0;
@@ -833,7 +982,6 @@
             adsrCtx.moveTo(0,h); adsrCtx.lineTo(x1,0); adsrCtx.lineTo(x2,y2); adsrCtx.lineTo(x3,y2); adsrCtx.lineTo(x4,h); adsrCtx.stroke();
         }
 
-        // ... (EQ Canvas Logic 変更なし) ...
         const eqCanvas = document.getElementById('eq-canvas'); const eqCtx = eqCanvas.getContext('2d'); const eqReadout = document.getElementById('eq-readout');
         const minFreq = 20; const maxFreq = 20000;
         function xToFreq(x, width) { return minFreq * Math.pow(maxFreq / minFreq, x / width); }
@@ -904,7 +1052,6 @@
             if (!synth) return;
             
             const velocity = Math.min(1.0, 0.1 + (volumeGain || 0));
-            // ★Update: Tone.now()を使って即時発音を強制
             synth.triggerAttackRelease(note, "8n", Tone.now(), velocity);
             
             const xPos = (clampX - 0.5) * playAreaSize; const yPos = -(playAreaSize / 2) + playAreaOffsetY;
@@ -934,8 +1081,6 @@
             if (y <= 0.01) {
                 triggerNoteFromPhysics(x, 0.5); 
             }
-            
-            // ★Update: spawnTimeとlastHitプロパティを追加
             balls.push({ mesh: ballMesh, vy: 0, vx: 0, x: x, y: y, id: id, spawnTime: Date.now(), lastHit: 0 });
         }
         let currentPointerPos = null;
