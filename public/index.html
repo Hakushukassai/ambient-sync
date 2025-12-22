@@ -30,7 +30,21 @@
         /* --- PC View Enhancements --- */
         @media (min-width: 1024px) { 
             body { background: #080808; }
-            #controls { justify-content: center; overflow-x: visible; background: #111; height: 320px; } 
+            
+            /* 修正: justify-contentを左寄せにし、スクロール(auto)を許可 */
+            #controls { 
+                justify-content: flex-start; 
+                overflow-x: auto; 
+                background: #111; 
+                height: 320px; 
+            } 
+
+            /* 追加: PCではスクロールバーを表示して操作しやすくする（デザインに合わせる） */
+            #controls::-webkit-scrollbar { display: block; height: 8px; }
+            #controls::-webkit-scrollbar-track { background: #111; }
+            #controls::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+            #controls::-webkit-scrollbar-thumb:hover { background: #555; }
+
             .panel-section { border: 1px solid #444 !important; background: #161616 !important; }
             canvas { border: 1px solid #555 !important; background: #000 !important; }
             .label { color: #888 !important; font-weight: bold; }
