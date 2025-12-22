@@ -812,16 +812,13 @@
             const now = Date.now();
 
             if (physicsMode) {
-                // Gravity X (左右)
+                // --- PHYSICSモード (そのまま) ---
                 const clampGamma = Math.max(-45, Math.min(45, gamma));
                 const targetGravX = 0.5 + (clampGamma / 45) * 0.5;
 
-                // Gravity Y (上下)
                 const clampBeta = Math.max(-90, Math.min(90, beta));
                 const maxGravity = 0.02;
-                
-                // ★修正箇所: ここにマイナス(-)をつけて方向を逆にしました
-                const targetGravY = (clampBeta / 90) * maxGravity;
+                const targetGravY = (clampBeta / 90) * maxGravity; // プラス（スマホ立てると下に落ちる）
 
                 updateAllSystems('GRAVITY_X', targetGravX);
                 updateAllSystems('GRAVITY_Y', targetGravY);
@@ -833,9 +830,14 @@
                 }
 
             } else {
-                // TOUCHモード
+                // --- TOUCHモード (ここを修正) ---
+                
+                // X (左右): 「1.0 -」を消して、標準に戻します（右に傾けると増える）
                 const normX = (Math.max(-45, Math.min(45, gamma)) + 45) / 90;
-                const normY = (Math.max(-45, Math.min(45, beta)) + 45) / 90;
+
+                // Y (前後): 「1.0 -」を残して、反転のままにします
+                // (これで手前に起こすと増えるか、奥に倒すと増えるか、好みの向きになります)
+                const normY = 1.0 - ((Math.max(-45, Math.min(45, beta)) + 45) / 90);
 
                 updateAllSystems(myTargets.x, normX); 
                 updateAllSystems(myTargets.y, normY);
