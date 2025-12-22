@@ -821,7 +821,7 @@
                 const maxGravity = 0.02;
                 
                 // ★修正箇所: ここにマイナス(-)をつけて方向を逆にしました
-                const targetGravY = -(clampBeta / 90) * maxGravity;
+                const targetGravY = (clampBeta / 90) * maxGravity;
 
                 updateAllSystems('GRAVITY_X', targetGravX);
                 updateAllSystems('GRAVITY_Y', targetGravY);
