@@ -807,52 +807,42 @@
         function handleSensor(e) {
             if (!isStarted || !isSensorActive) return;
 
-            // --- 傾きデータの取得と正規化 (0.0 〜 1.0) ---
-            const gamma = e.gamma || 0; // 左右の傾き (-90 ~ 90)
-            const normGamma = Math.max(-1, Math.min(1, gamma / 45)); 
-            const valX = (normGamma + 1) / 2; 
-
-            const beta = e.beta || 0; // 前後の傾き (-180 ~ 180)
-            const normBeta = Math.max(-1, Math.min(1, (beta - 45) / 45)); 
-            const valY = (1.0 - ((normBeta + 1) / 2)); 
-
+            const beta = e.beta || 0;   // 前後の傾き
+            const gamma = e.gamma || 0; // 左右の傾き
             const now = Date.now();
 
-            // --- ★ここから変更: モードによる分岐 ---
             if (physicsMode) {
-                // 【PHYSICSモード】: 傾きを重力(Gravity)に直結させる
+                // Gravity X (左右)
+                const clampGamma = Math.max(-45, Math.min(45, gamma));
+                const targetGravX = 0.5 + (clampGamma / 45) * 0.5;
+
+                // Gravity Y (上下)
+                const clampBeta = Math.max(-90, Math.min(90, beta));
+                const maxGravity = 0.02;
                 
-                // GRAVITY X: 左右の傾き (0.5が中心、0が左風、1が右風)
-                // そのままvalXを使えばOK
-                const targetGravX = valX;
+                // ★修正箇所: ここにマイナス(-)をつけて方向を逆にしました
+                const targetGravY = -(clampBeta / 90) * maxGravity;
 
-                // GRAVITY Y: 前後の傾き (通常は下向きの力)
-                // スマホを垂直に立てる(手前)と重力大、寝かせると重力ゼロ、逆さにすると反重力
-                // valY (0.0~1.0) を -0.02 ~ 0.02 の範囲にマッピングします
-                // 0.5 を中心点(無重力)とみなす計算
-                const gravityStrength = 0.04; // 重力の強さ係数
-                const targetGravY = (valY - 0.5) * gravityStrength; 
-
-                // ローカルの物理演算とUIを更新
                 updateAllSystems('GRAVITY_X', targetGravX);
                 updateAllSystems('GRAVITY_Y', targetGravY);
 
-                // サーバー同期 (通信量を抑えるため100ms制限)
-                if (now - lastSensorSync > 100) {
+                if (now - lastSensorSync > 50) {
                     socket.emit('update_param', { target: 'GRAVITY_X', value: targetGravX });
                     socket.emit('update_param', { target: 'GRAVITY_Y', value: targetGravY });
                     lastSensorSync = now;
                 }
 
             } else {
-                // 【TOUCHモード (通常)】: 従来通り割り当てたエフェクト(Filter等)を操作
-                
-                updateAllSystems(myTargets.x, valX); 
-                updateAllSystems(myTargets.y, valY);
+                // TOUCHモード
+                const normX = (Math.max(-45, Math.min(45, gamma)) + 45) / 90;
+                const normY = (Math.max(-45, Math.min(45, beta)) + 45) / 90;
+
+                updateAllSystems(myTargets.x, normX); 
+                updateAllSystems(myTargets.y, normY);
                 
                 if (now - lastSensorSync > 100) {
-                    socket.emit('update_param', { target: myTargets.x, value: valX });
-                    socket.emit('update_param', { target: myTargets.y, value: valY });
+                    socket.emit('update_param', { target: myTargets.x, value: normX });
+                    socket.emit('update_param', { target: myTargets.y, value: normY });
                     lastSensorSync = now;
                 }
             }
